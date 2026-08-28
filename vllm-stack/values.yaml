@@ -1,0 +1,48 @@
+# Default values for vllm-stack
+# Qwen3.8B Phase 1 - 2 nodes with 128k context via LiteLLM
+
+namespace: sir-llm-platform
+release: qwen-38b
+
+# Model configuration
+model:
+  name: qwen-3.8b
+  servedName: qwen-3.8b
+  path: "models--Qwen--Qwen3.8-27B/snapshots/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+  tensorParallelSize: 4
+  replicas: 2
+  batchSize: 8
+  maxModelLen: 131072  # 128k context
+
+# Node selector label for Phase 1 nodes
+nodeSelector:
+  llm-pool: "qwen-38b-phase1"
+
+# Image configuration
+images:
+  vllm: quay.io/ascend/vllm-ascend:v0.23.0rc1
+  redis: docker.io/library/redis:7-alpine
+  litellm: ghcr.io/berriai/litellm:main-stable
+
+# vLLM configuration
+vllm:
+  port: 8200
+  gpuMemoryUtilization: 0.90
+  trustRemoteCode: true
+
+# Router configuration
+router:
+  port: 8080
+  replicas: 1
+  kvAware: true
+  lenAware: true
+
+# LiteLLM configuration
+litellm:
+  port: 4000
+  nodePort: 30400
+  masterKey: "sk-qwen38b-local"
+
+# Redis configuration
+redis:
+  port: 6379

@@ -1,0 +1,148 @@
+# NPU Exporter DaemonSet for Ascend 910B NPUs
+# Using official Ascend npu-exporter binary
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: npu-exporter
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: npu-exporter
+  namespace: npu-exporter
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: npu-exporter
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: npu-exporter
+roleRef:
+  kind: ClusterRole
+  name: npu-exporter
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: npu-exporter
+    namespace: npu-exporter
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: npu-exporter
+  namespace: npu-exporter
+  labels:
+    app: npu-exporter
+spec:
+  selector:
+    matchLabels:
+      app: npu-exporter
+  template:
+    metadata:
+      labels:
+        app: npu-exporter
+    spec:
+      serviceAccountName: npu-exporter
+      nodeSelector:
+        sir.huawei.com/vllm-node: "true"
+      tolerations:
+        - key: "sir.huawei.com/vllm-node"
+          operator: "Exists"
+          effect: "NoSchedule"
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: npu-exporter
+          image: ghcr.io/clyde-org/llm-la-icbc/npu-exporter:6.0.0
+          imagePullPolicy: Always
+          command: ["/usr/local/bin/npu-exporter"]
+          args:
+            - "-port=8082"
+            - "-ip=0.0.0.0"
+            - "-updateTime=5"
+            - "-logFile=/var/log/npu-exporter/npu-exporter.log"
+            - "-logLevel=0"
+            - "-containerMode=docker"
+          ports:
+            - name: http
+              containerPort: 8082
+              hostPort: 8082
+              protocol: TCP
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: ascend-driver
+              mountPath: /usr/local/Ascend/driver
+              readOnly: true
+            - name: ascend-dcmi
+              mountPath: /usr/local/dcmi
+              readOnly: true
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+            - name: log
+              mountPath: /var/log/npu-exporter
+            - name: opt
+              mountPath: /opt/npu-exporter
+          resources:
+            requests:
+              memory: 1000Mi
+              cpu: 1000m
+            limits:
+              memory: 1000Mi
+              cpu: 1000m
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: ascend-driver
+          hostPath:
+            path: /usr/local/Ascend/driver
+        - name: ascend-dcmi
+          hostPath:
+            path: /usr/local/dcmi
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: log
+          hostPath:
+            path: /var/log/npu-exporter
+            type: DirectoryOrCreate
+        - name: opt
+          hostPath:
+            path: /opt/npu-exporter
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: npu-exporter
+  namespace: npu-exporter
+  labels:
+    app: npu-exporter
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8082
+      targetPort: 8082
+      name: http
+  selector:
+    app: npu-exporter

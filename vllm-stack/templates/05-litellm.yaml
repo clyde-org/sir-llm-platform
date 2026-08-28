@@ -1,0 +1,80 @@
+{{- define "vllm-stack.namespace" -}}
+{{ .Values.namespace | default "llm-gateway" }}
+{{- end }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-litellm
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: litellm
+    app.kubernetes.io/name: vllm-stack
+    app.kubernetes.io/component: litellm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: litellm
+  template:
+    metadata:
+      labels:
+        app: litellm
+    spec:
+      containers:
+        - name: litellm
+          image: {{ .Values.images.litellm }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: {{ .Values.litellm.port }}
+              name: http
+          env:
+            - name: LITELLM_MASTER_KEY
+              value: {{ .Values.litellm.masterKey }}
+            - name: LITELLM_DROP_PARAMS
+              value: "true"
+            - name: MODEL
+              value: {{ .Values.model.servedName }}
+            - name: OPENAI_API_BASE
+              value: "http://{{ .Release.Name }}-vllm:{{ .Values.vllm.port }}/v1"
+          command:
+            - litellm
+          args:
+            - "--port={{ .Values.litellm.port }}"
+            - "--host=0.0.0.0"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health/services
+              port: {{ .Values.litellm.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/services
+              port: {{ .Values.litellm.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-litellm
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: litellm
+spec:
+  type: NodePort
+  ports:
+    - port: {{ .Values.litellm.port }}
+      targetPort: {{ .Values.litellm.port }}
+      nodePort: {{ .Values.litellm.nodePort }}
+      name: http
+  selector:
+    app: litellm

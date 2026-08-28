@@ -1,0 +1,57 @@
+{{- define "vllm-stack.namespace" -}}
+{{ .Values.namespace | default "llm-gateway" }}
+{{- end }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-redis
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: redis
+    app.kubernetes.io/name: vllm-stack
+    app.kubernetes.io/component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.images.redis }}
+          ports:
+            - containerPort: {{ .Values.redis.port }}
+              name: redis
+          command:
+            - redis-server
+            - "--save"
+            - "60"
+            - "1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.redis.port }}
+      targetPort: redis
+      name: redis
+  selector:
+    app: redis

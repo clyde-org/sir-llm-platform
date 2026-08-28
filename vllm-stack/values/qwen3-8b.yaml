@@ -1,0 +1,143 @@
+# Qwen3-4B — 8 vLLM instances per node (8×12 = 96 total).
+# 12 nodes (excluding .243, .100 and .87), each with 8 NPUs, 1 NPU per instance.
+# Model on each node: /data/models/Qwen3-4B
+#
+# batchSize = sidecar inflight cap and vLLM --max-num-seqs (must rolling-restart).
+# Cap = 96×batchSize. 16 → 1536 (runs 12–15), 32 → 3072 (run 16), 64 → 6144 (run 17).
+#
+# maxModelLen 2048 (was 512): occupancy = arrival rate × residency, and residency =
+# max_tokens / per-request decode speed. Raising max_tokens is therefore the lever that
+# fills slots, and it has now worked twice:
+#   run 15  batch 16, 512 tok  → 1276 mean (83% of 1536), 98% p95,  81k tok/s fleet
+#   run 16  batch 32, 1280 tok → 2785 mean (91% of 3072), 99.7% p95, 136k tok/s fleet
+#
+# NPUs are on the knee of the saturation curve: per-pod batch ×2.18 (13.3→29.0) gave
+# per-pod throughput ×1.67 (847→1414 tok/s), with per-request decode down 23%
+# (63.7→48.7 tok/s). Still most of a proportional return, so worth one more step.
+#
+# batchSize 64 for run 17, paired with max_tokens 1536. An earlier note here claimed
+# this was infeasible; that was wrong on two counts. The KV pool is ~134k tok/pod (from
+# run 16's 13.9% mean at 29 seq × 643 tok — earlier estimates read ~108k because
+# inferring a pool from 1–3% utilisation is unreliable). And decode gets SLOWER at
+# batch 64, which stretches residency for free and so LOWERS the tokens needed; the old
+# note computed the requirement at the fast decode speed. Filling 6144 needs only
+# ~860–1435 tok across every throughput scenario, and 64×1539 ≈ 98k tok is ~73% of the
+# pool worst case, ~37% average. First run where KV is near preemption territory: if
+# occupancy starts sawtoothing instead of holding flat, drop max_tokens to ~1280.
+#
+# NOTE: the router is no longer the bottleneck. Run 16 dispatched 106 rps against the
+# ~158 rps single-core ceiling — the fleet is now the limit (136k tok/s ÷ 1280 tok =
+# 106 rps). Router CPU still pins at ~1000m, so that ceiling returns if decodes shorten.
+#
+# Install / redeploy (required after batchSize, maxModelLen, or model change):
+#   helm upgrade --install vllm ./src/vllm-kv-stack \
+#     -n vllm-sheriffo --create-namespace \
+#     -f values-llm-la-qwen4B.yaml \
+#     --timeout 60m --wait
+
+global:
+  imageRegistry: ghcr.io/clyde-org/llm-la-icbc
+
+modelVolume:
+  create: false
+  hostPath: /data/models
+  modelSubPath: "Qwen3.8-27B"
+
+images:
+  redis: docker.io/library/redis:7-alpine
+  vllm: quay.io/ascend/vllm-ascend:v0.23.0rc1
+  mooncakeMaster: quay.io/ascend/vllm-ascend:v0.23.0rc1
+
+cpuHash:
+  ascendDriverMounts: true
+
+sidecar:
+  imagePullPolicy: Always
+  streamingMode: true
+
+# Skip router - LiteLLM routes directly to vLLM
+pin:
+  enabled: false
+
+router:
+  enabled: false
+
+# vLLM on Phase 1 nodes only (2 nodes with llm-pool label)
+vllm:
+  nodeSelector:
+    llm-pool: qwen-38b-phase1
+  gpuMemoryUtilization: 0.90
+  trustRemoteCode: true
+
+# 2 vLLM instances (1 per node with TP=4)
+models:
+  - name: qwen3-8b
+    servedModelName: qwen3-8b
+    modelSubPath: Qwen3.8-27B
+    tensorParallelSize: 4
+    replicas: 2
+    batchSize: 8
+    vllm:
+      gpuMemoryUtilization: 0.90
+      trustRemoteCode: true
+      maxModelLen: 131072
+
+mooncake:
+  enabled: false
+
+cacheWarm:
+  enabled: false
+
+router:
+  hashSource: inline
+  kvAware: true
+  lenAware: true
+  lenPolicy: short_first
+  imagePullPolicy: Always
+  # Runs 10–11: python router pegged 973m/1000m CPU, 887Mi/1024Mi mem → probe
+  # timeouts and restarts at ~280 rps. Match go+inline headroom.
+  #
+  # CPU: serviceImpl is python (single GIL-bound process), so it saturates at ~990m
+  # no matter how high this limit goes — runs 12/13/14 all pegged 984/977/990m under
+  # a 2000m limit. The 2000m stays only as burst headroom for probe handlers; raising
+  # admitted rps needs serviceImpl=go or multiple replicas, not a bigger limit.
+  #
+  # Memory 8Gi (was 2560Mi): the router leaks and never gives it back. Runs 12→14 ran
+  # on one pod with 0 restarts: 313 → 932 → 1636 → 2374Mi, each run resuming where the
+  # last stopped, and nothing reclaimed across 141 idle minutes afterwards.
+  #
+  # Growth per 60k-request run: 739Mi @256 tok, 939Mi @512, 1920Mi @1280. So it is NOT
+  # purely per-request — run 15 suggested that, but over the wider range run 16 shows
+  # 2.5x tokens giving 2.04x growth, i.e. a large token/duration component. Budget
+  # ~3-4 runs per pod before a restart, and expect ~2.3Gi for run 17 at 1536 tok.
+  #
+  # _REQ_BLOCKS / _BLOCK_OWNERS in router/kv_aware.py are both structurally add-only
+  # (no pop/del/bound, unlike _REQ_ROUTING beside them) but cannot be the whole story:
+  # prefix caching is off and prompts are 1–5 tok, under one 16-tok block, so
+  # _REQ_BLOCKS entries are empty lists. Dominant term still unidentified.
+  #
+  # This is headroom to finish the sweep, NOT a fix; restart the router pod before
+  # each run regardless.
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "2000m"
+      memory: "8Gi"
+  # Under load /health/router can exceed 1s; default probe timeout caused
+  # liveness kills while CPU-saturated (run 11: 48 Unhealthy events → restart).
+  readinessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 6
+  livenessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+# LiteLLM proxy for auth/spend tracking
+litellm:
+  enabled: true
+  masterKey: "sk-qwen38b-local"
+  image: ghcr.io/berriai/litellm:main-stable
+  nodePort: 30400
+  databaseUrl: ""  # Use in-memory DB (no Postgres needed for Phase 1)

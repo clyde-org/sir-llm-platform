@@ -1,0 +1,171 @@
+# Prometheus/Grafana installation for Qwen3-8B LLM Stack
+# Installs kube-prometheus-stack in monitoring namespace
+
+namespaceOverride: monitoring
+
+prometheus:
+  enabled: true
+  service:
+    type: NodePort
+    port: 9090
+    nodePort: 30900
+  podMonitor:
+    # PodMonitors for vLLM and router
+    enabled: true
+  serviceMonitor:
+    enabled: true
+  # Prometheus scrape configs
+  prometheusSpec:
+    retention: 15d
+    retentionSize: 10GiB
+    storageSpec:
+      emptyDir: {}
+    # Scrape interval
+    scrapeInterval: 15s
+    scrapeTimeout: 10s
+    # Additional scrape configs
+    additionalScrapeConfigs:
+      - job_name: 'vllm-metrics'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: vllm
+          - source_labels: [__meta_kubernetes_pod_namespace]
+            action: keep
+            regex: sir-llm-platform
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - action: replace
+            source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          # Map container port to metrics path
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: "8200|9101"
+        scheme: http
+        metrics_path: /metrics
+
+      - job_name: 'router-metrics'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: router-service
+          - source_labels: [__meta_kubernetes_pod_namespace]
+            action: keep
+            regex: sir-llm-platform
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+        scheme: http
+        metrics_path: /metrics
+
+      - job_name: 'litellm-metrics'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: litellm
+          - source_labels: [__meta_kubernetes_pod_namespace]
+            action: keep
+            regex: sir-llm-platform
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: "4000"
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+        scheme: http
+        metrics_path: /metrics
+
+alertmanager:
+  enabled: false
+
+grafana:
+  enabled: true
+  service:
+    type: NodePort
+    port: 3000
+    nodePort: 30300
+  adminPassword: "prometheus-admin"
+  persistence:
+    enabled: false
+    storageClassName: standard
+    size: 5Gi
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+# Import existing dashboards if available
+extraVolumes:
+  - name: grafana-dashboards
+    configMap:
+      name: grafana-dashboards
+      defaultMode: 420
+
+extraVolumeMounts:
+  - name: grafana-dashboards
+    mountPath: /var/lib/grafana/dashboards/default
+    configMap: grafana-dashboards
+
+# Disable default alerts - we may add custom ones
+defaultRules:
+  enabled: true
+  rules:
+    # Disable Kubernetes system alerts that may be noisy
+    alertmanager: false
+    etcd: false
+    configReloaders: false
+    k8s: false
+    k8sAddons: false
+
+# Enable kubelet metrics
+kubelet:
+  enabled: true
+  serviceMonitor:
+    self: true
+
+# Enable apiserver metrics
+kubeApiServer:
+  enabled: true
+  serviceMonitor:
+    self: true
+
+# Enable controller manager metrics
+kubeControllerManager:
+  enabled: false
+
+# Enable scheduler metrics
+kubeScheduler:
+  enabled: false
+
+# Enable etcd metrics
+kubeEtcd:
+  enabled: false
+
+# Enable coreDNS metrics
+kubeDns:
+  enabled: false
+
+# Enable node metrics
+nodeExporter:
+  enabled: true
+  service:
+    type: ClusterIP

@@ -1,0 +1,71 @@
+# Qwen3.8-27B — Phase 1 deployment (2 nodes, 2 replicas with TP=4)
+# Model: /data/models/Qwen3.8-27B
+
+global:
+  imageRegistry: ghcr.io/clyde-org/llm-la-icbc
+
+modelVolume:
+  create: false
+  hostPath: /data/models
+  modelSubPath: "models--Qwen--Qwen3.8-27B/snapshots/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+
+images:
+  redis: docker.io/library/redis:7-alpine
+  vllm: quay.io/ascend/vllm-ascend:v0.18.0
+
+cpuHash:
+  ascendDriverMounts: true
+
+sidecar:
+  enabled: false
+
+# Pin router to first Phase 1 node
+pin:
+  enabled: true
+  nodeName: "devserver-bms-2eff03de-0.novalocal"
+
+# vLLM on Phase 1 nodes with model
+vllm:
+  nodeSelector:
+    llm-pool: qwen-38b-phase1
+  gpuMemoryUtilization: 0.90
+  trustRemoteCode: true
+
+# Single model: Qwen3.8-27B with TP=4
+models:
+  - name: qwen3-8b
+    servedModelName: qwen3-8b
+    modelSubPath: Qwen3.8-27B
+    tensorParallelSize: 4
+    replicas: 1
+    batchSize: 8
+    vllm:
+      gpuMemoryUtilization: 0.90
+      trustRemoteCode: true
+      maxModelLen: 131072  # 128k context
+
+mooncake:
+  enabled: false
+
+cacheWarm:
+  enabled: false
+
+router:
+  hashSource: inline
+  kvAware: true
+  lenAware: true
+  lenPolicy: short_first
+  imagePullPolicy: Always
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 6
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+redis:
+  imagePullPolicy: Always

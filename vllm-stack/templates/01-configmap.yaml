@@ -1,0 +1,20 @@
+{{- define "vllm-stack.namespace" -}}
+{{ .Values.namespace | default "llm-gateway" }}
+{{- end }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-model-registry
+  namespace: {{ include "vllm-stack.namespace" . }}
+data:
+  models.json: |
+    [
+      {
+        "name": "{{ .Values.model.name }}",
+        "served_name": "{{ .Values.model.servedName }}",
+        "model_path": "/models/{{ .Values.model.path }}",
+        "tensor_parallel_size": {{ .Values.model.tensorParallelSize }},
+        "max_model_len": {{ .Values.model.maxModelLen }}
+      }
+    ]
