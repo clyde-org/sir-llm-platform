@@ -27,7 +27,7 @@
 # vLLM card2 31021/31022, card3 31031/31032.
 
 # Namespace: vllm-metrics-experiment (pass via helm -n)
-
+namespace: vllm-metrics-experiment
 global:
   imageRegistry: ghcr.io/clyde-org/llm-la-icbc
 
@@ -124,7 +124,7 @@ timeshare:
         hostPath: /home/EulerX/gbw/2012_presentation
         mountPath: /home/EulerX/gbw/2012_presentation
       instances:
-        - name: qwen2.5-7b
+        - name: qwen25-7b
           servedModelName: qwen2.5-7b
           port: 8701
           nodePort: 31021
@@ -146,11 +146,11 @@ timeshare:
             enablePrefixCaching: true
             modelLoaderExtraConfig: '{"enable_multithread_load":true,"num_threads":16}'
             maxNumSeqs: 256
-        - name: qwen2.5-14b
+        - name: qwen25-14b
           servedModelName: qwen2.5-14b
           port: 8711
           nodePort: 31022
-          waitForSleepOf: qwen2.5-7b
+          waitForSleepOf: qwen25-7b
           logFile: qwen2.5-14b-npu2.log
           modelSubPath: Qwen2.5-14B-Instruct
           tensorParallelSize: 1
@@ -190,7 +190,7 @@ timeshare:
         hostPath: /home/EulerX/gbw/2012_presentation
         mountPath: /home/EulerX/gbw/2012_presentation
       instances:
-        - name: qwen2.5-7b
+        - name: qwen25-7b
           servedModelName: qwen2.5-7b
           port: 8701
           nodePort: 31031
@@ -212,11 +212,11 @@ timeshare:
             enablePrefixCaching: true
             modelLoaderExtraConfig: '{"enable_multithread_load":true,"num_threads":16}'
             maxNumSeqs: 256
-        - name: qwen2.5-14b
+        - name: qwen25-14b
           servedModelName: qwen2.5-14b
           port: 8711
           nodePort: 31032
-          waitForSleepOf: qwen2.5-7b
+          waitForSleepOf: qwen25-7b
           logFile: qwen2.5-14b-npu3.log
           modelSubPath: Qwen2.5-14B-Instruct
           tensorParallelSize: 1
