@@ -9,14 +9,14 @@
 #   TWO pods (cards 2 + 3), each:
 #     [ vLLM container (7B + 14B background processes, 1 NPU) ]
 #     + [ ONE kv-sidecar (MODELS_JSON, SCHED_ENABLED, drain->sleep->wake) ]
-#   + router (SCHED_ENABLED decide_pull) + redis
+#   + router (SCHED_ENABLED decide_pull) + redis (no LiteLLM)
 #
 # NPU wiring: mode mount — hostPath /dev/davinci* + ASCEND_RT from ascendDevices.
 # Physical cards 0–7; two groups pin card 2 and card 3. vLLM/CANN uses runtime
 # index 0 when only one card is visible.
 #
 # Install (from sir-llm-platform repo root, on the target cluster):
-#   helm upgrade --install vllm-presentation /path/to/llm-la/src/vllm-kv-stack \
+#   helm upgrade --install vllm-presentation ./vllm-stack \
 #     -n vllm-metrics-experiment --create-namespace \
 #     -f vllm-stack/values/values-presentation-dual-model-device-plugin.yaml \
 #     --timeout 60m --wait
@@ -97,6 +97,9 @@ router:
   livenessProbe:
     timeoutSeconds: 5
     failureThreshold: 6
+
+litellm:
+  enabled: false
 
 timeshare:
   enabled: true
