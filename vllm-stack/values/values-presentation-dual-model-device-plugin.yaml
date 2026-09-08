@@ -17,7 +17,7 @@
 #
 # Install (from sir-llm-platform repo root, on the target cluster):
 #   helm upgrade --install vllm-presentation /path/to/llm-la/src/vllm-kv-stack \
-#     -n sir-llm-platform --create-namespace \
+#     -n vllm-metrics-experiment --create-namespace \
 #     -f vllm-stack/values/values-presentation-dual-model-device-plugin.yaml \
 #     --timeout 60m --wait
 #
@@ -25,6 +25,8 @@
 #
 # NodePorts (portOffset 400): router 30480, redis 30479;
 # vLLM card2 31021/31022, card3 31031/31032.
+
+# Namespace: vllm-metrics-experiment (pass via helm -n)
 
 global:
   imageRegistry: ghcr.io/clyde-org/llm-la-icbc
