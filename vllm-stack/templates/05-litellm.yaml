@@ -2,8 +2,6 @@
 {{ .Values.namespace | default "llm-gateway" }}
 {{- end }}
 
-{{- if .Values.litellm.enabled }}
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -80,4 +78,3 @@ spec:
       name: http
   selector:
     app: litellm
-{{- end }}

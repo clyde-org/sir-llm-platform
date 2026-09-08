@@ -39,7 +39,6 @@ router:
 
 # LiteLLM configuration
 litellm:
-  enabled: true
   port: 4000
   nodePort: 30400
   masterKey: "sk-qwen38b-local"
