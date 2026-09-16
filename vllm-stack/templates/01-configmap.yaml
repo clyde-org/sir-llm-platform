@@ -1,20 +1,135 @@
-{{- define "vllm-stack.namespace" -}}
-{{ .Values.namespace | default "llm-gateway" }}
-{{- end }}
-
+# ---------------------------------------------------------------------------
+# ConfigMaps:
+#   - vllm-fingerprint-mw : ASGI middleware that stamps system_fingerprint
+#                           (the pod name) onto vLLM responses.
+#   - model-registry      : router model registry (models.yaml)
+#   - litellm-config      : LiteLLM proxy config (litellm_config.yaml)
+# ---------------------------------------------------------------------------
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-model-registry
+  name: vllm-fingerprint-mw
   namespace: {{ include "vllm-stack.namespace" . }}
 data:
-  models.json: |
-    [
-      {
-        "name": "{{ .Values.model.name }}",
-        "served_name": "{{ .Values.model.servedName }}",
-        "model_path": "/models/{{ .Values.model.path }}",
-        "tensor_parallel_size": {{ .Values.model.tensorParallelSize }},
-        "max_model_len": {{ .Values.model.maxModelLen }}
-      }
-    ]
+  _fp_mw.py: |
+    import os, json
+    _H = os.environ.get("POD_NAME", os.environ.get("HOSTNAME", "unknown"))
+    class HostnameFingerprint:
+        def __init__(self, app):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+            chunks = []
+            ct = ""
+            start_msg = None
+            async def ps(msg):
+                nonlocal ct, start_msg
+                if msg["type"] == "http.response.start":
+                    hdrs = []
+                    for n, v in msg.get("headers", []):
+                        nl = n.lower()
+                        if nl == b"content-type":
+                            ct = v.decode("utf-8", "replace").lower()
+                        if nl != b"content-length":
+                            hdrs.append((n, v))
+                    start_msg = dict(msg)
+                    start_msg["headers"] = hdrs
+                    if "event-stream" in ct:
+                        await send(start_msg)
+                        start_msg = None
+                    return
+                if msg["type"] == "http.response.body":
+                    body = msg.get("body", b"")
+                    more = msg.get("more_body", False)
+                    if "event-stream" in ct:
+                        t = body.decode("utf-8", "replace")
+                        out = []
+                        for ln in t.split("\n"):
+                            if ln.startswith("data: ") and ln.strip() != "data: [DONE]":
+                                try:
+                                    c = json.loads(ln[6:])
+                                    c["system_fingerprint"] = _H
+                                    ln = "data: " + json.dumps(c)
+                                except Exception:
+                                    pass
+                            out.append(ln)
+                        await send({"type": "http.response.body", "body": "\n".join(out).encode(), "more_body": more})
+                        return
+                    if not more:
+                        chunks.append(body)
+                        full = b"".join(chunks)
+                        try:
+                            d = json.loads(full)
+                            d["system_fingerprint"] = _H
+                            full = json.dumps(d).encode()
+                        except Exception:
+                            pass
+                        if start_msg is not None:
+                            start_msg["headers"].append((b"content-length", str(len(full)).encode()))
+                            await send(start_msg)
+                        await send({"type": "http.response.body", "body": full, "more_body": False})
+                        return
+                    chunks.append(body)
+                    return
+                await send(msg)
+            await self.app(scope, receive, ps)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-registry
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: model-registry
+    release: {{ .Release.Name }}
+data:
+  models.yaml: |
+    model_list:
+      - model_name: {{ .Values.model.servedName | quote }}
+        litellm_params:
+          model: "openai/{{ .Values.model.servedName }}"
+          api_base: "http://{{ .Values.router.serviceName }}:{{ .Values.router.port }}/v1"
+          api_key: "dummy"
+        router_params:
+          label_selector: "model={{ .Values.model.servedName }}"
+          batch_size: {{ .Values.model.batchSize }}
+---
+{{- if .Values.litellm.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: litellm-proxy
+    release: {{ .Release.Name }}
+data:
+  litellm_config.yaml: |
+    model_list:
+
+      - model_name: {{ .Values.model.servedName | quote }}
+        litellm_params:
+          model: "openai/{{ .Values.model.servedName }}"
+          api_base: "{{ .Values.litellm.apiBase }}"
+          api_key: "dummy"
+
+    router_settings:
+      cooldown_time: 0
+      num_retries: 0
+      allowed_fails: 1000
+      retry_after: 0
+
+    general_settings:
+      master_key: {{ .Values.litellm.masterKey | quote }}
+      pass_through_endpoints:
+        - path: "/raw/v1/chat/completions"
+          target: "{{ .Values.litellm.apiBase }}/chat/completions"
+          auth: true
+      allow_requests_on_db_unavailable: false
+
+    litellm_settings:
+      success_callback: []
+      failure_callback: []
+{{- end }}

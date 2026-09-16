@@ -1,0 +1,280 @@
+# ---------------------------------------------------------------------------
+# kv-router: routes requests to vLLM pods. Reads the model registry, watches
+# KV-cache events over ZMQ, and tracks queue state in Redis. Pinned to the
+# control-plane node.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kv-router-sa
+  namespace: {{ include "vllm-stack.namespace" . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kv-router-role
+  namespace: {{ include "vllm-stack.namespace" . }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kv-router-rolebinding
+  namespace: {{ include "vllm-stack.namespace" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kv-router-role
+subjects:
+  - kind: ServiceAccount
+    name: kv-router-sa
+    namespace: {{ include "vllm-stack.namespace" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.router.serviceName }}
+  namespace: {{ include "vllm-stack.namespace" . }}
+spec:
+  type: {{ .Values.router.serviceType }}
+  selector:
+    app: {{ .Values.router.serviceName }}
+  ports:
+    - name: http
+      port: {{ .Values.router.port }}
+      targetPort: {{ .Values.router.port }}
+{{- if eq .Values.router.serviceType "NodePort" }}
+      nodePort: {{ .Values.router.nodePort }}
+{{- end }}
+    - name: results-zmq
+      port: {{ .Values.router.resultsZmqPort }}
+      targetPort: {{ .Values.router.resultsZmqPort }}
+{{- if eq .Values.router.serviceType "NodePort" }}
+      nodePort: {{ .Values.router.resultsZmqNodePort }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.router.serviceName }}
+  namespace: {{ include "vllm-stack.namespace" . }}
+spec:
+  replicas: {{ .Values.router.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.router.serviceName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.router.serviceName }}
+    spec:
+      serviceAccountName: kv-router-sa
+{{ include "vllm-stack.nodePin" . | indent 6 }}
+{{ include "vllm-stack.tolerations" . | indent 6 }}
+      containers:
+        - name: router
+          image: {{ .Values.global.imageRegistry }}/kv-router:{{ .Values.router.imageTag | default "latest" }}
+          imagePullPolicy: {{ .Values.router.imagePullPolicy | default "Always" }}
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: {{ .Values.router.port | quote }}
+            - name: ACCESS_LOG
+              value: "false"
+
+            - name: KV_LOG_KEYS
+              value: "off"
+            - name: REQ_LOG_MODE
+              value: "summary"
+
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: MODEL_NAME
+              value: {{ .Values.model.servedName | quote }}
+
+            - name: NAMESPACE
+              value: {{ include "vllm-stack.namespace" . }}
+            - name: LABEL_SELECTOR
+              value: "component=vllm"
+            - name: VLLM_PORT
+              value: {{ .Values.vllm.port | quote }}
+
+            - name: KV_WATCH_INTERVAL_S
+              value: "1.0"
+            - name: KV_WATCH_MAX_KEYS
+              value: "200"
+            - name: KV_DISCOVERY_INTERVAL_S
+              value: "5.0"
+
+            # ---- KV-block hash source (inline | external) ----
+            - name: KV_HASH_SOURCE
+              value: {{ .Values.router.hashSource | default "inline" | quote }}
+            - name: HASH_SERVICE_URL
+              value: "http://vllm-cpu-hash:9095"
+            - name: KV_TOKENIZER_PATH
+              value: "/model"
+            - name: KV_BLOCK_SIZE
+              value: "128"
+            - name: PYTHONHASHSEED
+              value: "0"
+            - name: KV_CANONICALISE_TOOLS
+              value: "1"
+
+            # ---- Unified routing strategy (overrides kvAware/affinityEnabled when set) ----
+            - name: ROUTER_STRATEGY
+              value: "{{ .Values.router.strategy | default "" }}"
+
+            # ---- Helm-controlled routing knobs ----
+            - name: KV_AWARE
+              value: {{ .Values.router.kvAware | default false | quote }}
+
+            - name: LEN_AWARE
+              value: {{ .Values.router.lenAware | default true | quote }}
+
+            - name: LEN_POLICY
+              value: {{ .Values.router.lenPolicy | default "short_first" | quote }}
+            # --------------------------------------
+
+            # ---- Key-affinity routing knobs ----
+            - name: AFFINITY_ENABLED
+              value: "false"
+            - name: AFFINITY_MODE
+              value: "soft"
+            - name: AFFINITY_TTL_S
+              value: "300"
+            - name: AFFINITY_HARD_TIMEOUT_S
+              value: "5"
+            # ------------------------------------
+
+            # ---- SLO-aware routing knobs ----
+            - name: SLO_AWARE
+              value: "false"
+            - name: SLO_WITH_KV
+              value: "true"
+            - name: ADMISSION_THROTTLE
+              value: "false"
+            - name: FIXED_BATCH_SIZE
+              value: "0"
+            - name: OUTPUT_LEN_PREDICTOR
+              value: "simple"
+            - name: BATCH_SIZE_ESTIMATE
+              value: "fixed"
+            - name: FIXED_BATCH_ESTIMATE
+              value: {{ .Values.model.batchSize | quote }}
+            - name: LATENCY_PREDICTOR
+              value: "linear"
+            - name: LATENCY_ONLINE_UPDATE
+              value: "false"
+            - name: QUEUE_WAIT_MODEL
+              value: "none"
+            - name: CHUNKED_PREFILL_AWARE
+              value: "false"
+            - name: MAX_NUM_BATCHED_TOKENS
+              value: "0"
+            # ---------------------------------
+
+            - name: POOL_FACTOR
+              value: "4"
+            - name: STRIP_CCH
+              value: "1"
+            - name: POOL_BIDIRECTIONAL
+              value: "false"
+            - name: DEFAULT_MAX_TOKENS
+              value: "1024"
+
+            - name: ROUTER_MODE
+              value: "pull"
+
+            - name: SIDECAR_PORT
+              value: "9000"
+
+            - name: PUSH_LEASTQ_MODE
+              value: "local"
+
+            - name: RESULT_TIMEOUT_S
+              value: "1000.0"
+            - name: RESULT_POLL_INTERVAL_S
+              value: "0.02"
+
+            - name: PUSH_HTTP_TIMEOUT_S
+              value: "2.0"
+
+            - name: TRACE_ENABLED
+              value: "true"
+
+            - name: TRANSPORT_MODE
+              value: "async_pubsub"
+            - name: SUBMIT_PATH
+              value: "/submit"
+            - name: RESULTS_ZMQ_BIND
+              value: "tcp://0.0.0.0:{{ .Values.router.resultsZmqPort }}"
+            - name: RESULTS_ZMQ_TOPIC
+              value: "results"
+            - name: RESULTS_ZMQ_HWM
+              value: "500000"
+            - name: RESULTS_GRACE_S
+              value: "5.0"
+
+            - name: RESULT_TRANSPORT_MODE
+              value: "submit_ack"
+            - name: RESULT_SUBMIT_PATH
+              value: "/result_submit"
+            - name: MODEL_CONFIG_PATH
+              value: "/etc/model-registry/models.yaml"
+
+          ports:
+            - containerPort: {{ .Values.router.port }}
+              name: http
+            - containerPort: {{ .Values.router.resultsZmqPort }}
+              name: results-zmq
+
+          readinessProbe:
+            httpGet:
+              path: /health/router
+              port: {{ .Values.router.port }}
+            initialDelaySeconds: {{ .Values.router.readinessProbe.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ .Values.router.readinessProbe.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.router.readinessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.router.readinessProbe.failureThreshold | default 6 }}
+
+          livenessProbe:
+            httpGet:
+              path: /health/router
+              port: {{ .Values.router.port }}
+            initialDelaySeconds: {{ .Values.router.livenessProbe.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .Values.router.livenessProbe.periodSeconds | default 20 }}
+            timeoutSeconds: {{ .Values.router.livenessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.router.livenessProbe.failureThreshold | default 6 }}
+
+          volumeMounts:
+            - name: model
+              mountPath: /model
+              readOnly: true
+              subPath: {{ .Values.model.modelSubPath }}
+            - name: model-registry
+              mountPath: /etc/model-registry/models.yaml
+              subPath: models.yaml
+              readOnly: true
+
+          resources:
+{{ toYaml .Values.router.resources | indent 12 }}
+
+      volumes:
+        - name: model
+          hostPath:
+            path: {{ .Values.modelVolume.hostPath }}
+            type: Directory
+        - name: model-registry
+          configMap:
+            name: model-registry

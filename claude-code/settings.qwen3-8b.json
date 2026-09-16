@@ -1,0 +1,27 @@
+{
+  "env": {
+    "DISABLE_TELEMETRY": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "MCP_TIMEOUT": "60000",
+    "ANTHROPIC_API_KEY": "lab-key-placeholder",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8200",
+    "ANTHROPIC_MODEL": "qwen3-8b",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3-8b",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3-8b",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3-8b",
+    "ANTHROPIC_SMALL_FAST_MODEL": "qwen3-8b",
+    "HTTP_PROXY": "http://127.0.0.1:3128",
+    "HTTPS_PROXY": "http://127.0.0.1:3128",
+    "http_proxy": "http://127.0.0.1:3128",
+    "https_proxy": "http://127.0.0.1:3128",
+    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com"
+  },
+  "model": "opus",
+  "enabledPlugins": {
+    "cc-demo-plugin@rtos-cc-marketplace": true
+  },
+  "outputStyle": "engineer-professional",
+  "skipWebFetchPreflight": true,
+  "theme": "dark"
+}

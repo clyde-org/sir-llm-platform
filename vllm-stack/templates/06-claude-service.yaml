@@ -1,0 +1,26 @@
+{{- if .Values.claudeService.enabled }}
+# ---------------------------------------------------------------------------
+# Second Service exposing the vLLM pods for the Claude Code client
+# (Anthropic /v1/messages). Selects the same pods as the primary vLLM service.
+# ClusterIP by default; set serviceType=NodePort + nodePort to expose on a
+# node for out-of-cluster Claude Code.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.claudeService.name }}
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: {{ .Values.vllm.serviceName }}
+spec:
+  type: {{ .Values.claudeService.serviceType }}
+  selector:
+    app: {{ .Values.vllm.serviceName }}
+  ports:
+    - name: http
+      port: {{ .Values.vllm.port }}
+      targetPort: {{ .Values.vllm.port }}
+{{- if eq .Values.claudeService.serviceType "NodePort" }}
+      nodePort: {{ .Values.claudeService.nodePort }}
+{{- end }}
+{{- end }}

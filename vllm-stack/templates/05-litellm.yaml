@@ -1,80 +1,99 @@
-{{- define "vllm-stack.namespace" -}}
-{{ .Values.namespace | default "llm-gateway" }}
-{{- end }}
-
+{{- if .Values.litellm.enabled }}
+# ---------------------------------------------------------------------------
+# LiteLLM proxy: API gateway (auth + spend tracking). Pinned to the control-plane
+# node. Config is mounted from the litellm-config ConfigMap.
+# ---------------------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-litellm
+  name: {{ .Values.litellm.serviceName }}
   namespace: {{ include "vllm-stack.namespace" . }}
   labels:
-    app: litellm
-    app.kubernetes.io/name: vllm-stack
-    app.kubernetes.io/component: litellm
+    app: {{ .Values.litellm.serviceName }}
+    release: {{ .Release.Name }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: litellm
+      app: {{ .Values.litellm.serviceName }}
   template:
     metadata:
       labels:
-        app: litellm
+        app: {{ .Values.litellm.serviceName }}
+        release: {{ .Release.Name }}
     spec:
+{{ include "vllm-stack.nodePin" . | indent 6 }}
+{{ include "vllm-stack.tolerations" . | indent 6 }}
       containers:
         - name: litellm
           image: {{ .Values.images.litellm }}
           imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: {{ .Values.litellm.port }}
-              name: http
-          env:
-            - name: LITELLM_MASTER_KEY
-              value: {{ .Values.litellm.masterKey }}
-            - name: LITELLM_DROP_PARAMS
-              value: "true"
-            - name: MODEL
-              value: {{ .Values.model.servedName }}
-            - name: OPENAI_API_BASE
-              value: "http://{{ .Release.Name }}-vllm:{{ .Values.vllm.port }}/v1"
-          command:
-            - litellm
           args:
-            - "--port={{ .Values.litellm.port }}"
-            - "--host=0.0.0.0"
-          resources:
-            requests:
-              cpu: 500m
-              memory: 512Mi
-            limits:
-              cpu: 2000m
-              memory: 2Gi
-          readinessProbe:
-            httpGet:
-              path: /health/services
-              port: {{ .Values.litellm.port }}
-            initialDelaySeconds: 15
-            periodSeconds: 5
+            - --config
+            - /app/litellm_config.yaml
+            - --port
+            - {{ .Values.litellm.port | quote }}
+{{- if .Values.litellm.detailedDebug }}
+            - --detailed_debug
+{{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.litellm.port }}
+              protocol: TCP
+          volumeMounts:
+            - name: litellm-config
+              mountPath: /app/litellm_config.yaml
+              subPath: litellm_config.yaml
+          # LiteLLM takes ~17s to initialize; 60s delay avoids premature kill.
           livenessProbe:
             httpGet:
-              path: /health/services
+              path: /health/liveliness
               port: {{ .Values.litellm.port }}
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 4
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: {{ .Values.litellm.port }}
+            initialDelaySeconds: 60
             periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          env:
+            # Suppress telemetry back to litellm.ai
+            - name: LITELLM_TELEMETRY
+              value: "False"
+            - name: NO_PROXY
+              value: "{{ .Values.litellm.serviceName }}.{{ include "vllm-stack.namespace" . }},{{ include "vllm-stack.namespace" . }},localhost,127.0.0.1,no_proxy={{ .Values.litellm.serviceName }}.{{ include "vllm-stack.namespace" . }},{{ include "vllm-stack.namespace" . }},localhost,127.0.0.1"
+            - name: LITELLM_LOCAL_MODEL_COST_MAP
+              value: "True"
+      volumes:
+        - name: litellm-config
+          configMap:
+            name: litellm-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}-litellm
+  name: {{ .Values.litellm.serviceName }}
   namespace: {{ include "vllm-stack.namespace" . }}
   labels:
-    app: litellm
+    app: {{ .Values.litellm.serviceName }}
+    release: {{ .Release.Name }}
 spec:
   type: NodePort
+  selector:
+    app: {{ .Values.litellm.serviceName }}
   ports:
-    - port: {{ .Values.litellm.port }}
+    - name: http
+      port: {{ .Values.litellm.port }}
       targetPort: {{ .Values.litellm.port }}
       nodePort: {{ .Values.litellm.nodePort }}
-      name: http
-  selector:
-    app: litellm
+{{- end }}

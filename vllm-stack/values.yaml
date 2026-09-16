@@ -1,22 +1,39 @@
 # Default values for vllm-stack
-# Qwen3.8B Phase 1 - 2 nodes with 128k context via LiteLLM
+# Qwen3.8-27B on Ascend 910B — Phase 1 (sir-llm-platform namespace).
+#
+# These defaults reproduce the current production deployment:
+#   Client -> LiteLLM (30400) -> kv-router (8080) -> vLLM x4 (TP=4) + kv-sidecar
+#                                              -> Redis (queue state)
+#
+# Override per-environment with -f values/<env>.yaml (e.g. values-qwen38b.yaml,
+# values-presentation-*.yaml).
 
 namespace: sir-llm-platform
-release: qwen-38b
+
+# Global image registry for the clyde-org images (kv-router, kv-sidecar).
+global:
+  imageRegistry: ghcr.io/clyde-org/llm-la-icbc
 
 # Model configuration
 model:
-  name: qwen-3.8b
-  servedName: qwen-3.8b
-  path: "models--Qwen--Qwen3.8-27B/snapshots/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
-  tensorParallelSize: 4
-  replicas: 2
-  batchSize: 8
-  maxModelLen: 131072  # 128k context
+  servedName: qwen3-8b        # served / registered model name
+  modelSubPath: Qwen3.8-27B   # subPath under modelVolume.hostPath
+  tensorParallelSize: 4       # NPUs per pod (TP=4)
+  replicas: 4                 # one pod per 4-NPU node (4 phase-1 nodes)
+  batchSize: 8                # --max-num-seqs; router FIXED_BATCH_ESTIMATE
+  maxModelLen: 131072         # 128k context
+  maxNumBatchedTokens: 8192
 
-# Node selector label for Phase 1 nodes
-nodeSelector:
-  llm-pool: "qwen-38b-phase1"
+# Model volume (hostPath-mounted, models are pre-staged on the node)
+modelVolume:
+  create: false
+  hostPath: /data/models
+  readOnly: true
+
+# Node pinning for the control plane (redis, router, litellm).
+pin:
+  enabled: true
+  nodeName: devserver-bms-2eff03de-0.novalocal
 
 # Image configuration
 images:
@@ -24,25 +41,77 @@ images:
   redis: docker.io/library/redis:7-alpine
   litellm: ghcr.io/berriai/litellm:main-stable
 
-# vLLM configuration
+# vLLM inference engine
 vllm:
+  serviceName: vllm-qwen3-8b
   port: 8200
-  gpuMemoryUtilization: 0.90
+  gpuMemoryUtilization: 0.9
   trustRemoteCode: true
+  nodeSelector:
+    llm-pool: qwen-38b-phase1
+  # ClientIP session affinity pins each client to one vLLM pod, keeping
+  # prefix/prompt-cache locality on a single backend (KV-cache affinity).
+  sessionAffinity: ClientIP
+  sessionAffinityTimeoutSeconds: 10800
 
-# Router configuration
+# kv-router
 router:
-  port: 8080
+  serviceName: router-service
   replicas: 1
-  kvAware: true
+  imageTag: latest
+  imagePullPolicy: Always
+  port: 8080
+  resultsZmqPort: 5559
+  serviceType: ClusterIP       # deployed as ClusterIP (no external NodePort)
+  nodePort: 30080              # used only if serviceType=NodePort
+  resultsZmqNodePort: 30559
+  hashSource: inline
+  kvAware: false               # disabled: inline hash needs tokenizer deps
   lenAware: true
+  lenPolicy: short_first
+  strategy: ""
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "2000m"
+      memory: "8Gi"
+  readinessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 6
+  livenessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 6
 
-# LiteLLM configuration
+# kv-sidecar (one per vLLM pod)
+sidecar:
+  enabled: true
+  imageTag: latest
+  imagePullPolicy: Always
+  streamingMode: true
+
+# LiteLLM API proxy
 litellm:
+  enabled: true
+  serviceName: litellm-proxy
   port: 4000
   nodePort: 30400
-  masterKey: "sk-qwen38b-local"
+  masterKey: "sk-sirlab"
+  # LiteLLM points directly at vLLM (bypasses the kv-router) in the live setup.
+  apiBase: "http://vllm-qwen3-8b:8200/v1"
+  detailedDebug: false
 
-# Redis configuration
+# Second Service exposing the vLLM pods for the Claude Code client
+# (Anthropic /v1/messages). Unauthenticated; see claude-code/README.md.
+claudeService:
+  enabled: true
+  name: vllm-qwen3-8b-claude
+  serviceType: ClusterIP
+  nodePort: 32387              # used only if serviceType=NodePort
+
+# Redis (queue state + backend discovery)
 redis:
   port: 6379
+  serviceType: ClusterIP       # deployed as ClusterIP (no external NodePort)
+  nodePort: 30079              # used only if serviceType=NodePort

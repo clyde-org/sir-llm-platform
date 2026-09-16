@@ -1,0 +1,380 @@
+# ---------------------------------------------------------------------------
+# vLLM: one Deployment of N replicas, each running TP={{ .Values.model.tensorParallelSize }}
+# on a single Ascend 910B node (nodeSelector llm-pool + avoid != vllm + preferred
+# pod anti-affinity spreads one pod per node). Each pod = [vllm] + [kv-sidecar].
+#
+# vllm container runs the OpenAI API server behind a bash wrapper that also serves
+# a /metrics thread-count endpoint on :9101 (consumed by the ServiceMonitor).
+# The kv-sidecar pulls work from the router and talks to the local vLLM over ZMQ.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.vllm.serviceName }}
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    component: vllm
+    model: {{ .Values.model.servedName }}
+spec:
+  type: ClusterIP
+{{- if .Values.vllm.sessionAffinity }}
+  sessionAffinity: {{ .Values.vllm.sessionAffinity }}
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: {{ .Values.vllm.sessionAffinityTimeoutSeconds | default 10800 }}
+{{- end }}
+  selector:
+    app: {{ .Values.vllm.serviceName }}
+  ports:
+    - name: http
+      port: {{ .Values.vllm.port }}
+      targetPort: {{ .Values.vllm.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.vllm.serviceName }}
+  namespace: {{ include "vllm-stack.namespace" . }}
+spec:
+  replicas: {{ .Values.model.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.vllm.serviceName }}
+      model: {{ .Values.model.servedName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.vllm.serviceName }}
+        component: vllm
+        model: {{ .Values.model.servedName }}
+    spec:
+      restartPolicy: Always
+      shareProcessNamespace: true
+
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+      nodeSelector:
+        llm-pool: {{ index .Values.vllm.nodeSelector "llm-pool" }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: avoid
+                    operator: NotIn
+                    values:
+                      - vllm
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: model
+                      operator: Exists
+                topologyKey: kubernetes.io/hostname
+              weight: 100
+
+      containers:
+        - name: vllm
+          image: {{ .Values.images.vllm }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+          args:
+            - |
+              set -eo pipefail
+
+              export CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH:-}"
+              echo "--- ASCEND_TOOLKIT_HOME before sourcing: [$ASCEND_TOOLKIT_HOME]"
+              source /usr/local/Ascend/ascend-toolkit/set_env.sh
+              export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH:/usr/local/Ascend/ascend-toolkit/latest/aarch64-linux/devlib:/usr/local/Ascend/ascend-toolkit/latest/aarch64-linux/lib64
+
+              export PYTHONPATH="/etc/fingerprint-mw:${PYTHONPATH:-}"
+
+              python -m vllm.entrypoints.openai.api_server \
+                --model /model \
+                --tokenizer /model \
+                --port {{ .Values.vllm.port | quote }} \
+                --served-model-name {{ .Values.model.servedName | quote }} \
+                --tensor-parallel-size {{ .Values.model.tensorParallelSize | quote }} \
+                --middleware _fp_mw.HostnameFingerprint \
+                --dtype auto \
+                --kv-cache-dtype auto \
+                --max-num-seqs {{ .Values.model.batchSize | quote }} \
+                --max-num-batched-tokens {{ .Values.model.maxNumBatchedTokens | quote }} \
+                --enable-prefix-caching \
+                --enable-prompt-tokens-details \
+                --enable-force-include-usage \
+                --gpu-memory-utilization {{ .Values.vllm.gpuMemoryUtilization | quote }} \
+                --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+                --trust-remote-code \
+                --enable-auto-tool-choice \
+                --tool-call-parser qwen3_coder \
+                --reasoning-parser qwen3 \
+                --speculative-config '{"method": "mtp", "num_speculative_tokens": 3, "enforce_eager": true}' \
+                --max-model-len {{ .Values.model.maxModelLen | quote }} \
+                --host 0.0.0.0 \
+                --kv-events-config '{"enable_kv_cache_events": true, "publisher": "zmq", "endpoint": "tcp://*:5557", "topic": "kv@'"${POD_NAME}"'@{{ .Values.model.servedName }}"}' \
+                &
+              VLLM_PID=$!
+              echo "[vllm-wrapper] vLLM PID=$VLLM_PID model={{ .Values.model.servedName }}"
+
+              VLLM_PID="$VLLM_PID" POD_NAME="$POD_NAME" python - <<'PY' &
+              import os, time
+              from http.server import BaseHTTPRequestHandler, HTTPServer
+              PID = int(os.environ["VLLM_PID"])
+              POD = os.environ.get("POD_NAME", "unknown")
+              PORT = 9101
+              def threads(pid):
+                  try: return len(os.listdir(f"/proc/{pid}/task"))
+                  except: return None
+              for _ in range(120):
+                  if os.path.exists(f"/proc/{PID}"): break
+                  time.sleep(0.25)
+              class H(BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      if self.path != "/metrics":
+                          self.send_response(404); self.end_headers(); return
+                      n = threads(PID)
+                      body = 'vllm_threads{pod="%s"} %d\n' % (POD, n) if n else "# pid not visible\n"
+                      self.send_response(200)
+                      self.send_header("Content-Type", "text/plain; version=0.0.4")
+                      self.end_headers()
+                      self.wfile.write(body.encode())
+                  def log_message(self, *a): pass
+              HTTPServer(("0.0.0.0", PORT), H).serve_forever()
+              PY
+
+              wait "$VLLM_PID"
+          env:
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+            - name: HF_HUB_DISABLE_TELEMETRY
+              value: "1"
+            - name: PYTHONHASHSEED
+              value: "0"
+            - name: TOKENIZERS_PARALLELISM
+              value: "false"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ASCEND_RT_VISIBLE_DEVICES
+              value: "0,1,2,3"
+            - name: HCCL_OP_EXPANSION_MODE
+              value: "AIV"
+            - name: VLLM_USE_V1
+              value: "1"
+            - name: PYTORCH_NPU_ALLOC_CONF
+              value: "expandable_segments:True"
+            - name: ASCEND_BUFFER_POOL
+              value: "4:8"
+          ports:
+            - containerPort: {{ .Values.vllm.port }}
+              name: http
+              protocol: TCP
+            - containerPort: 5557
+              name: kvpub
+              protocol: TCP
+            - containerPort: 9101
+              name: vllmthr
+              protocol: TCP
+          volumeMounts:
+            - name: fingerprint-mw
+              mountPath: /etc/fingerprint-mw
+              readOnly: true
+            - name: model
+              mountPath: /model
+              readOnly: true
+              subPath: {{ .Values.model.modelSubPath }}
+            - name: dshm
+              mountPath: /dev/shm
+            - name: dcmi-volume
+              mountPath: /usr/local/dcmi
+            - name: npu-smi-volume
+              mountPath: /usr/local/bin/npu-smi
+            - name: ascend-driver-lib64-volume
+              mountPath: /usr/local/Ascend/driver/lib64/
+            - name: version-info-volume
+              mountPath: /usr/local/Ascend/driver/version.info
+            - name: ascend-install-info-volume
+              mountPath: /etc/ascend_install.info
+            - name: cache-volume
+              mountPath: /root/.cache
+            - name: hisi-hdc-volume
+              mountPath: /dev/hisi_hdc
+            - name: devmm-svm-volume
+              mountPath: /dev/devmm_svm
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.vllm.port }}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 720
+            timeoutSeconds: 5
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.vllm.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 12
+            timeoutSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.vllm.port }}
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 720
+            timeoutSeconds: 5
+
+          resources:
+            requests:
+              huawei.com/Ascend910: {{ .Values.model.tensorParallelSize }}
+              ephemeral-storage: "2Gi"
+            limits:
+              huawei.com/Ascend910: {{ .Values.model.tensorParallelSize }}
+              ephemeral-storage: "4Gi"
+{{- if .Values.sidecar.enabled }}
+        - name: kv-sidecar
+          image: {{ .Values.global.imageRegistry }}/kv-sidecar:{{ .Values.sidecar.imageTag | default "latest" }}
+          imagePullPolicy: {{ .Values.sidecar.imagePullPolicy | default "Always" }}
+          env:
+            - name: ROUTER_URL
+              value: "http://{{ .Values.router.serviceName }}:{{ .Values.router.port }}"
+            - name: VLLM_URL
+              value: "http://127.0.0.1:{{ .Values.vllm.port }}"
+            - name: MODEL_NAME
+              value: {{ .Values.model.servedName | quote }}
+            - name: SIDECAR_PORT
+              value: "9000"
+            - name: BATCH_SIZE
+              value: {{ .Values.model.batchSize | quote }}
+            - name: PREFETCH
+              value: "0"
+            - name: SIDECAR_MODE
+              value: "pull"
+            - name: PULL_INTERVAL_S
+              value: "0.05"
+            - name: ROUTER_PULL_TIMEOUT_S
+              value: "1000.0"
+            - name: VLLM_TIMEOUT_S
+              value: "7200.0"
+            - name: ROUTER_RESULT_TIMEOUT_S
+              value: "1000.0"
+            - name: RESULT_TRANSPORT_MODE
+              value: "submit_ack"
+            - name: RESULT_SUBMIT_PATH
+              value: "/result_submit"
+            - name: VLLM_HOST
+              value: "127.0.0.1"
+            - name: VLLM_SUB_PORT
+              value: "5557"
+            - name: DP_SIZE
+              value: "1"
+            - name: DP_SIZE_LOCAL
+              value: "1"
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: CONTAINER_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MODEL_NAME_REDIS
+              value: {{ .Values.model.servedName | quote }}
+            - name: TRACE_ENABLED
+              value: "true"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: FORCE_IGNORE_EOS
+              value: "false"
+            - name: STREAMING_MODE
+              value: {{ .Values.sidecar.streamingMode | default true | quote }}
+          ports:
+            - containerPort: 9000
+              name: sidecar-http
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+{{- end }}
+
+      volumes:
+        - name: fingerprint-mw
+          configMap:
+            name: vllm-fingerprint-mw
+        - name: model
+          hostPath:
+            path: {{ .Values.modelVolume.hostPath }}
+            type: Directory
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+        - name: dcmi-volume
+          hostPath:
+            path: /usr/local/dcmi
+            type: Directory
+        - name: npu-smi-volume
+          hostPath:
+            path: /usr/local/bin/npu-smi
+            type: File
+        - name: ascend-driver-lib64-volume
+          hostPath:
+            path: /usr/local/Ascend/driver/lib64/
+            type: Directory
+        - name: version-info-volume
+          hostPath:
+            path: /usr/local/Ascend/driver/version.info
+            type: File
+        - name: ascend-install-info-volume
+          hostPath:
+            path: /etc/ascend_install.info
+            type: File
+        - name: cache-volume
+          hostPath:
+            path: /root/.cache
+            type: DirectoryOrCreate
+        - name: hisi-hdc-volume
+          hostPath:
+            path: /dev/hisi_hdc
+            type: CharDevice
+        - name: devmm-svm-volume
+          hostPath:
+            path: /dev/devmm_svm
+            type: CharDevice

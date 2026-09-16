@@ -1,0 +1,83 @@
+# ---------------------------------------------------------------------------
+# Prometheus (kube-prometheus-stack) scrapers for this release. Created in the
+# release namespace, labeled for the kube-prometheus-stack Prometheus.
+#   - ServiceMonitor vllm     : vllm:8200 /metrics (1s)
+#   - PodMonitor   kv-router  : router:8080 /metrics (1s)
+#   - PodMonitor   kv-sidecar : vllm pods :9000 sidecar-http /metrics (1s)
+#   - PodMonitor   litellm-proxy : litellm:4000 /metrics/ (5s)
+# ---------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kv-router
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.router.serviceName }}
+  podMetricsEndpoints:
+    - path: /metrics
+      port: http
+      scheme: http
+      honorLabels: true
+      interval: 1s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kv-sidecar
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      component: vllm
+  podMetricsEndpoints:
+    - path: /metrics
+      port: sidecar-http
+      scheme: http
+      honorLabels: true
+      interval: 1s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: litellm-proxy
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: {{ .Values.litellm.serviceName }}
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.litellm.serviceName }}
+  podMetricsEndpoints:
+    - path: /metrics/
+      port: http
+      scheme: http
+      honorLabels: true
+      interval: 5s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vllm
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      component: vllm
+  namespaceSelector:
+    matchNames:
+      - {{ include "vllm-stack.namespace" . }}
+  endpoints:
+    - path: /metrics
+      port: http
+      scheme: http
+      honorLabels: true
+      interval: 1s

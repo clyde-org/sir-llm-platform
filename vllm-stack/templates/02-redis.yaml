@@ -1,16 +1,28 @@
-{{- define "vllm-stack.namespace" -}}
-{{ .Values.namespace | default "llm-gateway" }}
+# ---------------------------------------------------------------------------
+# Redis: queue state + backend discovery. Pinned to the control-plane node.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: {{ include "vllm-stack.namespace" . }}
+spec:
+  type: {{ .Values.redis.serviceType }}
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: {{ .Values.redis.port }}
+      targetPort: {{ .Values.redis.port }}
+{{- if eq .Values.redis.serviceType "NodePort" }}
+      nodePort: {{ .Values.redis.nodePort }}
 {{- end }}
-
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-redis
+  name: redis
   namespace: {{ include "vllm-stack.namespace" . }}
-  labels:
-    app: redis
-    app.kubernetes.io/name: vllm-stack
-    app.kubernetes.io/component: redis
 spec:
   replicas: 1
   selector:
@@ -21,37 +33,36 @@ spec:
       labels:
         app: redis
     spec:
+{{ include "vllm-stack.nodePin" . | indent 6 }}
+{{ include "vllm-stack.tolerations" . | indent 6 }}
       containers:
         - name: redis
           image: {{ .Values.images.redis }}
+          imagePullPolicy: {{ .Values.images.redisPullPolicy | default "IfNotPresent" }}
+          args:
+            - redis-server
+            - --save
+            - "60"
+            - "1"
+            - --loglevel
+            - warning
           ports:
             - containerPort: {{ .Values.redis.port }}
               name: redis
-          command:
-            - redis-server
-            - "--save"
-            - "60"
-            - "1"
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: "100m"
+              memory: "256Mi"
             limits:
-              cpu: 500m
-              memory: 512Mi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Release.Name }}-redis
-  namespace: {{ include "vllm-stack.namespace" . }}
-  labels:
-    app: redis
-spec:
-  type: ClusterIP
-  ports:
-    - port: {{ .Values.redis.port }}
-      targetPort: redis
-      name: redis
-  selector:
-    app: redis
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.redis.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.redis.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 20

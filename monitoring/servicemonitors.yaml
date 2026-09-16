@@ -1,4 +1,100 @@
-# ServiceMonitors for scraping vLLM, Router, LiteLLM, and NPU metrics
+# Monitors for scraping vLLM, Router, LiteLLM, and NPU metrics.
+#
+# These live in the `monitoring` namespace and are picked up by the kube-prometheus-stack
+# release `prometheus` (labels release: prometheus). They reach into `sir-llm-platform`
+# (and the presentation/experiment namespaces) via namespaceSelector.
+#
+# Both ServiceMonitor and PodMonitor variants of the vllm/router scrapes are deployed in
+# the live cluster; the PodMonitor variants are the ones that actually match the current
+# pod labels. Kept together in this file since it is applied as a unit.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm-metrics
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      component: vllm
+  namespaceSelector:
+    matchNames:
+      - sir-llm-platform
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: router-metrics
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: router-service
+  namespaceSelector:
+    matchNames:
+      - sir-llm-platform
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: litellm-metrics
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: litellm-proxy
+  namespaceSelector:
+    matchNames:
+      - sir-llm-platform
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+# Presentation / experiment namespaces (dual-model timeshare deploys)
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: router-presentation-metrics
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: router-service
+  namespaceSelector:
+    matchNames:
+      - vllm-presentation
+      - vllm-presentation-single
+      - vllm-presentation-ascend
+      - vllm-metrics-experiments
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      scheme: http
+      honorLabels: true
+      interval: 15s
+      scrapeTimeout: 10s
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -39,27 +135,28 @@ spec:
       interval: 15s
       scrapeTimeout: 10s
 ---
-# Note: LiteLLM metrics require network-level access to internal cluster IPs.
-# If the corporate proxy is blocking traffic, LiteLLM metrics will not work.
-# Current working metrics: vLLM, Router, NPU Exporter
----
 apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
+kind: ServiceMonitor
 metadata:
-  name: litellm-metrics
+  name: vllm-presentation-metrics
   namespace: monitoring
   labels:
     release: prometheus
 spec:
   selector:
     matchLabels:
-      app: litellm-proxy
+      component: vllm
   namespaceSelector:
     matchNames:
-      - sir-llm-platform
-  podMetricsEndpoints:
+      - vllm-presentation
+      - vllm-presentation-single
+      - vllm-presentation-ascend
+      - vllm-metrics-experiments
+  endpoints:
     - port: http
       path: /metrics
+      scheme: http
+      honorLabels: true
       interval: 15s
       scrapeTimeout: 10s
 ---
