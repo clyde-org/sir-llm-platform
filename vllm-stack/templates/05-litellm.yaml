@@ -21,6 +21,10 @@ spec:
       labels:
         app: {{ .Values.litellm.serviceName }}
         release: {{ .Release.Name }}
+      annotations:
+        # LiteLLM reads its config only at startup, so config-relevant
+        # value changes must bump the pod template to trigger a rollout.
+        checksum/litellm-config: {{ tuple .Values.litellm .Values.model .Values.phase2 .Values.claudeService | toYaml | sha256sum }}
     spec:
 {{ include "vllm-stack.nodePin" . | indent 6 }}
 {{ include "vllm-stack.tolerations" . | indent 6 }}
