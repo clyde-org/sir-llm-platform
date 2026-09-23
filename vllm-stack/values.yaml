@@ -61,9 +61,10 @@ vllm:
 router:
   serviceName: router-service
   replicas: 1
-  imageTag: "d66e429"   # llm-la-icbc commit; never :latest (adds model-aware /v1/messages)
-  # ghcr.io is not reachable from cluster nodes (proxy-only); images are
-  # imported into containerd directly, so never ask kubelet to pull.
+  imageTag: "cc0b976d"   # llm-la-icbc build tag; never :latest (adds model-aware /v1/messages)
+  # containerd on the pool nodes has direct egress to ghcr.io, so kubelet
+  # pulls on first use (IfNotPresent). The old "import into containerd by
+  # hand" step is obsolete.
   imagePullPolicy: IfNotPresent
   port: 8080
   resultsZmqPort: 5559
@@ -92,10 +93,8 @@ router:
 # kv-sidecar (one per vLLM pod)
 sidecar:
   enabled: true
-  imageTag: "842a170"   # llm-la-icbc commit; never :latest
-  # ghcr.io is not reachable from cluster nodes (proxy-only); images are
-  # imported into containerd directly, so never ask kubelet to pull.
-  imagePullPolicy: IfNotPresent
+  imageTag: "cc0b976d"   # llm-la-icbc build tag (paired with router); never :latest
+  imagePullPolicy: IfNotPresent   # ghcr direct egress available (see router note above)
   streamingMode: true
 
 # LiteLLM API proxy
