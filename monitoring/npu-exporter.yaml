@@ -70,6 +70,13 @@ spec:
             - "-logFile=/var/log/npu-exporter/npu-exporter.log"
             - "-logLevel=0"
             - "-containerMode=docker"
+            # Default is 5. kubelet liveness+readiness probes (same source IP on
+            # hostNetwork) leave ~5-7 TIME_WAIT sockets from the node IP per minute,
+            # so the built-in per-IP connection limiter intermittently rejected a
+            # probe with 503 ("Single IP request reject") -> 3x liveness fail ->
+            # SIGTERM restart loop (~2 restarts/hour per pod). 32 keeps flood
+            # protection with comfortable headroom for kube-probe + Prometheus.
+            - "-limitIPConn=32"
           ports:
             - name: http
               containerPort: 8082
@@ -104,14 +111,18 @@ spec:
             httpGet:
               path: /health
               port: 8082
-            initialDelaySeconds: 30
+            initialDelaySeconds: 45   # phase-shifted from the 10s readiness cycle so both probes don't hit in the same millisecond
             periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5       # 150s of sustained failure before kill (was 3x30s=90s)
           readinessProbe:
             httpGet:
               path: /health
               port: 8082
-            initialDelaySeconds: 10
+            initialDelaySeconds: 20
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
       volumes:
         - name: ascend-driver
           hostPath:

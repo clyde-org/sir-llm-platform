@@ -4,9 +4,32 @@
 # release `prometheus` (labels release: prometheus). They reach into `sir-llm-platform`
 # (and the presentation/experiment namespaces) via namespaceSelector.
 #
-# Both ServiceMonitor and PodMonitor variants of the vllm/router scrapes are deployed in
-# the live cluster; the PodMonitor variants are the ones that actually match the current
-# pod labels. Kept together in this file since it is applied as a unit.
+# vLLM and router are scraped via PodMonitors only. A duplicate ServiceMonitor for vLLM
+# previously produced a SECOND scrape job (relabelled to the service name) with identical
+# pod/container labels, which doubled every sum()/sum by(pod) value on the dashboard.
+# The router ServiceMonitor (selector app=router) matched no Service and was dead.
+# The PodMonitor variants carry the pod/container labels the dashboard panels need.
+#
+# NOTE: the vllm-stack chart (vllm-stack/templates/07-podmonitors.yaml) renders its own
+# monitors in the sir-llm-platform namespace, but labels them `release: kube-prometheus-stack`
+# while Prometheus selects `release: prometheus` — they are currently INERT. Do not add
+# matching monitors here until that label is fixed, or the endpoints get double-scraped.
+---
+# Bearer token for the LiteLLM /metrics/ scrape. LiteLLM's auth middleware guards ALL
+# routes (401 without a key), and /metrics/ 404s unless the prometheus callbacks are
+# enabled in litellm_config.yaml (see vllm-stack/templates/01-configmap.yaml).
+# NOTE: this value is the LiteLLM master key, which is already committed in this repo
+# (vllm-stack/values.yaml, README.md, the litellm-config template).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: litellm-bearer-token
+  namespace: monitoring
+  labels:
+    release: prometheus
+type: Opaque
+stringData:
+  token: sk-qwen38b-local
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -64,7 +87,12 @@ spec:
       - sir-llm-platform
   podMetricsEndpoints:
     - port: http
-      path: /metrics
+      # Trailing slash is required: LiteLLM 307-redirects /metrics -> /metrics/
+      path: /metrics/
+      # The endpoint sits behind the proxy auth middleware; scrape with the master key.
+      bearerTokenSecret:
+        name: litellm-bearer-token
+        key: token
       interval: 15s
       scrapeTimeout: 10s
 ---
@@ -92,46 +120,6 @@ spec:
       path: /metrics
       scheme: http
       honorLabels: true
-      interval: 15s
-      scrapeTimeout: 10s
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: vllm-metrics
-  namespace: monitoring
-  labels:
-    release: prometheus
-spec:
-  selector:
-    matchLabels:
-      component: vllm
-  namespaceSelector:
-    matchNames:
-      - sir-llm-platform
-  endpoints:
-    - port: http
-      path: /metrics
-      interval: 15s
-      scrapeTimeout: 10s
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: router-metrics
-  namespace: monitoring
-  labels:
-    release: prometheus
-spec:
-  selector:
-    matchLabels:
-      app: router
-  namespaceSelector:
-    matchNames:
-      - sir-llm-platform
-  endpoints:
-    - port: http
-      path: /metrics
       interval: 15s
       scrapeTimeout: 10s
 ---
@@ -179,3 +167,28 @@ spec:
       path: /metrics
       interval: 30s
       scrapeTimeout: 15s
+---
+# Mooncake master (KV-cache store metadata/control service) metrics.
+# The master exposes an HTTP metrics server on --metrics_port; the vLLM pods
+# themselves expose no extra metrics for the store (the pool is visible here:
+# objects, segments, evictions, hit/miss counters).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: mooncake-metrics
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: mooncake-master
+  namespaceSelector:
+    matchNames:
+      - sir-llm-platform
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      scheme: http
+      interval: 30s
+      scrapeTimeout: 10s

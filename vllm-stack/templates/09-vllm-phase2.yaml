@@ -1,16 +1,30 @@
 # ---------------------------------------------------------------------------
-# vLLM: one Deployment of N replicas, each running TP={{ .Values.model.tensorParallelSize }}
-# on a single Ascend 910B node (nodeSelector llm-pool + avoid != vllm + preferred
-# pod anti-affinity spreads one pod per node). Each pod = [vllm] + [kv-sidecar].
+# vLLM Phase-2 pool: 910B3 64GB HBM nodes (node3/node4, llm-pool=qwen-38b-phase2).
 #
-# vllm container runs the OpenAI API server behind a bash wrapper that also serves
-# a /metrics thread-count endpoint on :9101 (consumed by the ServiceMonitor).
-# The kv-sidecar pulls work from the router and talks to the local vLLM over ZMQ.
+# ADDITIVE: renders only when phase2.enabled=true. Does not touch any object
+# rendered by 04-vllm.yaml. Same model label so the router (model-registry
+# label_selector model=qwen3.8-27b) discovers these pods automatically.
+#
+# Differences vs 04-vllm.yaml (deliberate):
+#   - nodeSelector: phase2.poolLabel (qwen-38b-phase2)
+#   - optional phase2.pinnedNode (kubernetes.io/hostname) for single-pod validation
+#   - maxModelLen from phase2.maxModelLen (raised to 262144 in phase 3)
+#   - NO mooncake: no --kv-transfer-config, no MOONCAKE_CONFIG_PATH, no
+#     /etc/mooncake volume. (Mooncake KV store breaks this vLLM build; the
+#     phase-1 pool is also running without it as of rev 11.)
+#   - --kv-events-config + kv-sidecar are KEPT (independent vLLM KV-event
+#     feature; sidecar is the router traffic path, not the mooncake path).
+#
+# NPU allocation: the Ascend device plugin bind-mounts only the allocated
+# /dev/davinci* devices into the pod, so the static ASCEND_RT_VISIBLE_DEVICES
+# below means "the 4 allocated devices". Two TP=4 pods per node get disjoint
+# physical sets automatically — no per-pod device mapping needed.
 # ---------------------------------------------------------------------------
+{{- if .Values.phase2.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Values.vllm.serviceName }}
+  name: {{ .Values.phase2.serviceName }}
   namespace: {{ include "vllm-stack.namespace" . }}
   labels:
     component: vllm
@@ -18,7 +32,7 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    app: {{ .Values.vllm.serviceName }}
+    app: {{ .Values.phase2.serviceName }}
   ports:
     - name: http
       port: {{ .Values.vllm.port }}
@@ -27,18 +41,18 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Values.vllm.serviceName }}
+  name: {{ .Values.phase2.serviceName }}
   namespace: {{ include "vllm-stack.namespace" . }}
 spec:
-  replicas: {{ .Values.model.replicas }}
+  replicas: {{ .Values.phase2.replicas }}
   selector:
     matchLabels:
-      app: {{ .Values.vllm.serviceName }}
+      app: {{ .Values.phase2.serviceName }}
       model: {{ .Values.model.servedName }}
   template:
     metadata:
       labels:
-        app: {{ .Values.vllm.serviceName }}
+        app: {{ .Values.phase2.serviceName }}
         component: vllm
         model: {{ .Values.model.servedName }}
     spec:
@@ -53,7 +67,10 @@ spec:
           operator: "Exists"
           effect: "NoSchedule"
       nodeSelector:
-        llm-pool: {{ index .Values.vllm.nodeSelector "llm-pool" }}
+        llm-pool: {{ .Values.phase2.poolLabel }}
+{{- if .Values.phase2.pinnedNode }}
+        kubernetes.io/hostname: {{ .Values.phase2.pinnedNode }}
+{{- end }}
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -95,8 +112,8 @@ spec:
                 --model /model \
                 --tokenizer /model \
                 --port {{ .Values.vllm.port | quote }} \
-                --served-model-name {{ .Values.model.servedName | quote }} \
-                --tensor-parallel-size {{ .Values.model.tensorParallelSize | quote }} \
+                --served-model-name {{ .Values.phase2.servedName | default .Values.model.servedName | quote }}{{ if .Values.model.legacyAlias }} {{ .Values.model.legacyAlias | quote }}{{ end }} \
+                --tensor-parallel-size {{ .Values.phase2.tensorParallelSize | quote }} \
                 --middleware _fp_mw.HostnameFingerprint \
                 --dtype auto \
                 --kv-cache-dtype auto \
@@ -112,15 +129,12 @@ spec:
                 --tool-call-parser qwen3_coder \
                 --reasoning-parser qwen3 \
                 --speculative-config '{"method": "mtp", "num_speculative_tokens": 3, "enforce_eager": true}' \
-                --max-model-len {{ .Values.model.maxModelLen | quote }} \
+                --max-model-len {{ .Values.phase2.maxModelLen | quote }} \
                 --host 0.0.0.0 \
                 --kv-events-config '{"enable_kv_cache_events": true, "publisher": "zmq", "endpoint": "tcp://*:5557", "topic": "kv@'"${POD_NAME}"'@{{ .Values.model.servedName }}"}' \
-{{- if .Values.mooncake.attachToVllm }}
-                --kv-transfer-config '{"kv_connector": "{{ .Values.mooncake.kvConnector | default "AscendStoreConnector" }}", "kv_role": "kv_both"}' \
-{{- end }}
                 &
               VLLM_PID=$!
-              echo "[vllm-wrapper] vLLM PID=$VLLM_PID model={{ .Values.model.servedName }}"
+              echo "[vllm-wrapper] vLLM PID=$VLLM_PID model={{ .Values.model.servedName }} (phase2 pool)"
 
               VLLM_PID="$VLLM_PID" POD_NAME="$POD_NAME" python - <<'PY' &
               import os, time
@@ -174,18 +188,6 @@ spec:
               value: "expandable_segments:True"
             - name: ASCEND_BUFFER_POOL
               value: "4:8"
-{{- if .Values.mooncake.attachToVllm }}
-            # Mooncake store parameters (master address, protocol, segment sizes)
-            # live in the mooncake-store-config ConfigMap, not here.
-            - name: MOONCAKE_CONFIG_PATH
-              value: /etc/mooncake/mooncake_store_config.json
-{{- if .Values.mooncake.legacyRpcPortBinding }}
-            # Bind the transfer-engine listener to the registered segment port
-            # (see mooncake.legacyRpcPortBinding in values.yaml).
-            - name: MC_LEGACY_RPC_PORT_BINDING
-              value: "1"
-{{- end }}
-{{- end }}
           ports:
             - containerPort: {{ .Values.vllm.port }}
               name: http
@@ -222,11 +224,6 @@ spec:
               mountPath: /dev/hisi_hdc
             - name: devmm-svm-volume
               mountPath: /dev/devmm_svm
-{{- if .Values.mooncake.attachToVllm }}
-            - name: mooncake-config
-              mountPath: /etc/mooncake
-              readOnly: true
-{{- end }}
 
           startupProbe:
             httpGet:
@@ -257,10 +254,10 @@ spec:
 
           resources:
             requests:
-              huawei.com/Ascend910: {{ .Values.model.tensorParallelSize }}
+              huawei.com/Ascend910: {{ .Values.phase2.tensorParallelSize }}
               ephemeral-storage: "2Gi"
             limits:
-              huawei.com/Ascend910: {{ .Values.model.tensorParallelSize }}
+              huawei.com/Ascend910: {{ .Values.phase2.tensorParallelSize }}
               ephemeral-storage: "4Gi"
 {{- if .Values.sidecar.enabled }}
         - name: kv-sidecar
@@ -272,7 +269,7 @@ spec:
             - name: VLLM_URL
               value: "http://127.0.0.1:{{ .Values.vllm.port }}"
             - name: MODEL_NAME
-              value: {{ .Values.model.servedName | quote }}
+              value: {{ .Values.phase2.servedName | default .Values.model.servedName | quote }}
             - name: SIDECAR_PORT
               value: "9000"
             - name: BATCH_SIZE
@@ -310,7 +307,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: MODEL_NAME_REDIS
-              value: {{ .Values.model.servedName | quote }}
+              value: {{ .Values.phase2.servedName | default .Values.model.servedName | quote }}
             - name: TRACE_ENABLED
               value: "true"
             - name: LOG_LEVEL
@@ -392,8 +389,4 @@ spec:
           hostPath:
             path: /dev/devmm_svm
             type: CharDevice
-{{- if .Values.mooncake.attachToVllm }}
-        - name: mooncake-config
-          configMap:
-            name: {{ .Values.mooncake.configMapName | default "mooncake-store-config" }}
 {{- end }}

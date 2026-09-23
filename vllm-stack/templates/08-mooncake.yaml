@@ -1,0 +1,151 @@
+{{- if .Values.mooncake.enabled }}
+# ---------------------------------------------------------------------------
+# Mooncake distributed KV-cache store.
+#
+# mooncake-master : metadata/control service for the cluster-wide KV pool.
+#                   Stateless — the KV data itself lives in each vLLM pod's
+#                   node DRAM (embedded mode: every vLLM TP rank registers a
+#                   `globalSegmentSize` segment with the pool).
+#                   The vllm-ascend image ships mooncake_master, the HTTP
+#                   metadata server, the transfer engine (NPU build) and the
+#                   AscendStoreConnector.
+#
+# mooncake-store-config : JSON consumed by the vLLM pods via
+#                   $MOONCAKE_CONFIG_PATH (see 04-vllm.yaml).
+#
+# Two switches:
+#   mooncake.enabled      -> deploy this (master + service + config)
+#   mooncake.attachToVllm -> also wire the vLLM pods to the store
+#
+# Rollback: helm upgrade ... --set mooncake.attachToVllm=false (vLLM only),
+# or --set mooncake.enabled=false (remove everything).
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.mooncake.configMapName | default "mooncake-store-config" }}
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: {{ .Values.mooncake.serviceName }}
+    release: vllm
+data:
+  mooncake_store_config.json: |
+    {
+      "metadata_server": "http://{{ .Values.mooncake.serviceName }}.{{ include "vllm-stack.namespace" . }}:{{ .Values.mooncake.metadataPort }}/metadata",
+      "master_server_address": "{{ .Values.mooncake.serviceName }}.{{ include "vllm-stack.namespace" . }}:{{ .Values.mooncake.rpcPort }}",
+      "protocol": "{{ .Values.mooncake.store.protocol | default "ascend" }}",
+      "device_name": "{{ .Values.mooncake.store.deviceName | default "" }}",
+      "mode": "{{ .Values.mooncake.store.mode | default "embedded" }}",
+      "global_segment_size": "{{ .Values.mooncake.store.globalSegmentSize | default "8GB" }}",
+      "local_buffer_size": "{{ .Values.mooncake.store.localBufferSize | default "4GB" }}",
+      "enable_offload": {{ .Values.mooncake.store.enableOffload | default false }}
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.mooncake.serviceName }}
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: {{ .Values.mooncake.serviceName }}
+    release: vllm
+spec:
+  replicas: {{ .Values.mooncake.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: {{ .Values.mooncake.serviceName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.mooncake.serviceName }}
+        component: mooncake
+    spec:
+      {{- if .Values.pin.enabled }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: "kubernetes.io/hostname"
+                    operator: In
+                    values:
+                      - {{ .Values.pin.nodeName }}
+      {{- end }}
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: mooncake-master
+          image: {{ .Values.images.mooncakeMaster | default .Values.images.vllm }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - mooncake_master
+            - --rpc_port={{ .Values.mooncake.rpcPort }}
+            - --enable_http_metadata_server
+            - --http_metadata_server_host=0.0.0.0
+            - --http_metadata_server_port={{ .Values.mooncake.metadataPort }}
+            - --metrics_port={{ .Values.mooncake.metricsPort }}
+            - --eviction_high_watermark_ratio={{ .Values.mooncake.evictionHighWatermark | default "0.9" }}
+            {{- if .Values.mooncake.ha.enabled }}
+            - --enable_ha
+            - --ha_backend_type=redis
+            - --ha_backend_connstring={{ .Values.mooncake.ha.connstring | default (printf "redis://redis:%v" .Values.redis.port) }}
+            {{- end }}
+          ports:
+            - name: rpc
+              containerPort: {{ .Values.mooncake.rpcPort }}
+              protocol: TCP
+            - name: metadata
+              containerPort: {{ .Values.mooncake.metadataPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.mooncake.metricsPort }}
+              protocol: TCP
+          startupProbe:
+            tcpSocket:
+              port: rpc
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            tcpSocket:
+              port: rpc
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: rpc
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.mooncake.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.mooncake.serviceName }}
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: {{ .Values.mooncake.serviceName }}
+    release: vllm
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Values.mooncake.serviceName }}
+  ports:
+    - name: rpc
+      port: {{ .Values.mooncake.rpcPort }}
+      targetPort: rpc
+    - name: metadata
+      port: {{ .Values.mooncake.metadataPort }}
+      targetPort: metadata
+    - name: metrics
+      port: {{ .Values.mooncake.metricsPort }}
+      targetPort: metrics
+{{- end }}

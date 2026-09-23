@@ -38,3 +38,26 @@ tolerations:
     key: node-role.kubernetes.io/master
     operator: Exists
 {{- end }}
+
+{{/*
+Anthropic /v1/messages upstream map (JSON) for the router's model-aware
+raw-forward endpoint (env ANTHROPIC_UPSTREAMS, see 03-router.yaml). Maps each
+servable model name to the Anthropic-native vLLM endpoint hosting that pool:
+  - model.servedName (+ model.legacyAlias) -> claudeService (phase-1 pool)
+  - phase2.servedName                      -> phase2 service (262k pool)
+*/}}
+{{- define "vllm-stack.anthropicUpstreams" -}}
+{{- $pairs := list -}}
+{{- if .Values.claudeService.enabled -}}
+{{- $p1 := printf "http://%s:%v" .Values.claudeService.name .Values.vllm.port -}}
+{{- $pairs = append $pairs (printf "\"%s\":\"%s\"" .Values.model.servedName $p1) -}}
+{{- if .Values.model.legacyAlias -}}
+{{- $pairs = append $pairs (printf "\"%s\":\"%s\"" .Values.model.legacyAlias $p1) -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.phase2.enabled -}}
+{{- $p2 := printf "http://%s:%v" .Values.phase2.serviceName .Values.vllm.port -}}
+{{- $pairs = append $pairs (printf "\"%s\":\"%s\"" (.Values.phase2.servedName | default .Values.model.servedName) $p2) -}}
+{{- end -}}
+{ {{ $pairs | join "," }} }
+{{- end }}

@@ -1,0 +1,3014 @@
+# Provisioned Grafana dashboard for the sir-llm-platform deployment.
+#
+# The Grafana pod runs a kiwigrid/k8s-sidecar (container grafana-sc-dashboard)
+# that watches for ConfigMaps labeled `grafana_dashboard: "1"` and copies them
+# into /tmp/dashboards, which the `sidecarProvider` file provider loads.
+# Because grafana.persistence is disabled, this ConfigMap is the durable source
+# of the dashboard -- it survives pod restarts and is editable only via the file
+# (the sidecar provider is read-only in the UI).
+#
+# Apply with:
+#   kubectl apply -f monitoring/dashboards/sir-llm-platform-vllm-configmap.yaml
+#
+# The dashboard JSON itself lives at monitoring/dashboards/sir-llm-platform-vllm.json
+# and must be kept in sync with the data value below.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sir-llm-platform-vllm-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: sir-llm-platform-vllm-dashboard
+data:
+  sir-llm-platform-vllm.json: |-
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "links": [],
+      "panels": [
+        {
+          "type": "row",
+          "title": "Gateway / HTTP (vLLM OpenAI server)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "title": "Request rate by status",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 1
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by(status) (rate(http_requests_total{namespace=\"sir-llm-platform\",container=\"vllm\"}[5m]))",
+              "legendFormat": "{{status}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Incoming OpenAI API traffic. 4xx = 581k cumulative — watch this closely."
+        },
+        {
+          "type": "timeseries",
+          "title": "HTTP latency (percentiles)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 1
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum by(le) (rate(http_request_duration_seconds_bucket{namespace=\"sir-llm-platform\",container=\"vllm\"}[5m])))",
+              "legendFormat": "p50",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by(le) (rate(http_request_duration_seconds_bucket{namespace=\"sir-llm-platform\",container=\"vllm\"}[5m])))",
+              "legendFormat": "p95",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum by(le) (rate(http_request_duration_seconds_bucket{namespace=\"sir-llm-platform\",container=\"vllm\"}[5m])))",
+              "legendFormat": "p99",
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "End-to-end HTTP latency at the vLLM server."
+        },
+        {
+          "type": "timeseries",
+          "title": "Error rate by endpoint (4xx/5xx)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 9
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by(handler) (rate(http_requests_total{namespace=\"sir-llm-platform\",container=\"vllm\",status=~\"4xx|5xx\"}[5m]))",
+              "legendFormat": "{{handler}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Which endpoint is failing and how fast."
+        },
+        {
+          "type": "timeseries",
+          "title": "Requests by endpoint",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 9
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by(handler) (rate(http_requests_total{namespace=\"sir-llm-platform\",container=\"vllm\"}[5m]))",
+              "legendFormat": "{{handler}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Traffic split across /v1/chat/completions, /v1/responses, etc."
+        },
+        {
+          "type": "row",
+          "title": "Router / SLO (router-service)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 17
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "title": "Admission vs Dispatch rate",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(router_admission_requests_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "admitted",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "sum (rate(router_dispatch_requests_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "dispatched",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Requests entering the router vs handed to engines."
+        },
+        {
+          "type": "timeseries",
+          "title": "Central queue (by model)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by(model_name) (router_central_queue_length_by_model{namespace=\"sir-llm-platform\"})",
+              "legendFormat": "{{model_name}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "max (router_central_queue_length{namespace=\"sir-llm-platform\"})",
+              "legendFormat": "total",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Backlog waiting to be scheduled."
+        },
+        {
+          "type": "timeseries",
+          "title": "Router TTFT (overall)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 26
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "Mean",
+              "expr": "sum(rate(router_request_ttft_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(router_request_ttft_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "P50",
+              "expr": "histogram_quantile(0.5, sum by(le) (rate(router_request_ttft_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "C",
+              "legendFormat": "P90",
+              "expr": "histogram_quantile(0.9, sum by(le) (rate(router_request_ttft_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "D",
+              "legendFormat": "P95",
+              "expr": "histogram_quantile(0.95, sum by(le) (rate(router_request_ttft_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "E",
+              "legendFormat": "P99",
+              "expr": "histogram_quantile(0.99, sum by(le) (rate(router_request_ttft_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Time-to-first-token observed at the router, fleet-wide. Mean and tail percentiles in one view."
+        },
+        {
+          "type": "timeseries",
+          "title": "Router E2E (overall)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 26
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "Mean",
+              "expr": "sum(rate(router_request_e2e_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(router_request_e2e_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "P50",
+              "expr": "histogram_quantile(0.5, sum by(le) (rate(router_request_e2e_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "C",
+              "legendFormat": "P90",
+              "expr": "histogram_quantile(0.9, sum by(le) (rate(router_request_e2e_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "D",
+              "legendFormat": "P95",
+              "expr": "histogram_quantile(0.95, sum by(le) (rate(router_request_e2e_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "E",
+              "legendFormat": "P99",
+              "expr": "histogram_quantile(0.99, sum by(le) (rate(router_request_e2e_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "End-to-end request latency observed at the router, fleet-wide."
+        },
+        {
+          "type": "timeseries",
+          "title": "Router queue wait (overall)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 34
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "Mean",
+              "expr": "sum(rate(router_request_queue_wait_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(router_request_queue_wait_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "P50",
+              "expr": "histogram_quantile(0.5, sum by(le) (rate(router_request_queue_wait_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "C",
+              "legendFormat": "P90",
+              "expr": "histogram_quantile(0.9, sum by(le) (rate(router_request_queue_wait_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "D",
+              "legendFormat": "P95",
+              "expr": "histogram_quantile(0.95, sum by(le) (rate(router_request_queue_wait_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "E",
+              "legendFormat": "P99",
+              "expr": "histogram_quantile(0.99, sum by(le) (rate(router_request_queue_wait_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Time a request spends in the central queue before dispatch, fleet-wide."
+        },
+        {
+          "type": "timeseries",
+          "title": "Router TPOT (overall)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 34
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "Mean",
+              "expr": "sum(rate(router_request_tpot_avg_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(router_request_tpot_avg_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "P50",
+              "expr": "histogram_quantile(0.5, sum by(le) (rate(router_request_tpot_avg_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "C",
+              "legendFormat": "P90",
+              "expr": "histogram_quantile(0.9, sum by(le) (rate(router_request_tpot_avg_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "D",
+              "legendFormat": "P95",
+              "expr": "histogram_quantile(0.95, sum by(le) (rate(router_request_tpot_avg_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "E",
+              "legendFormat": "P99",
+              "expr": "histogram_quantile(0.99, sum by(le) (rate(router_request_tpot_avg_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Per-token generation time (TPOT) observed by the router, fleet-wide."
+        },
+        {
+          "type": "timeseries",
+          "title": "SLO compliance (met vs missed)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 42
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(router_slo_actual_met_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "met",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "sum (rate(router_slo_actual_miss_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "missed",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "sum (rate(router_slo_predicted_miss_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "predicted miss",
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Whether requests are meeting their latency SLO."
+        },
+        {
+          "type": "timeseries",
+          "title": "Timeshare: awake / total instances",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 42
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "router_scheduler_awake_instances{namespace=\"sir-llm-platform\"}",
+              "legendFormat": "awake",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "router_scheduler_instances{namespace=\"sir-llm-platform\"}",
+              "legendFormat": "total",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "How many of the shared engines are currently powered on."
+        },
+        {
+          "type": "stat",
+          "title": "HA failovers (24h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 0,
+            "y": 50
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum (increase(router_ha_failovers_total{namespace=\"sir-llm-platform\"}[24h]))",
+              "legendFormat": "failovers",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Router leader elections in the last 24h."
+        },
+        {
+          "type": "timeseries",
+          "title": "KV-aware routing affinity",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 18,
+            "x": 6,
+            "y": 50
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(router_affinity_hits_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "hits/s",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "max (router_affinity_map_size{namespace=\"sir-llm-platform\"})",
+              "legendFormat": "map size",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "How often the router steers a request to a replica already holding its KV prefix."
+        },
+        {
+          "type": "row",
+          "title": "vLLM engine latency",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 58
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "title": "vLLM TTFT (overall)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 59
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "Mean",
+              "expr": "sum(rate(vllm:time_to_first_token_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(vllm:time_to_first_token_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "P50",
+              "expr": "histogram_quantile(0.5, sum by(le) (rate(vllm:time_to_first_token_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "C",
+              "legendFormat": "P90",
+              "expr": "histogram_quantile(0.9, sum by(le) (rate(vllm:time_to_first_token_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "D",
+              "legendFormat": "P95",
+              "expr": "histogram_quantile(0.95, sum by(le) (rate(vllm:time_to_first_token_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "E",
+              "legendFormat": "P99",
+              "expr": "histogram_quantile(0.99, sum by(le) (rate(vllm:time_to_first_token_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Cluster-wide time-to-first-token across all vLLM pods. Compare with Router TTFT to separate dispatch/queue latency from engine prefill latency."
+        },
+        {
+          "type": "timeseries",
+          "title": "vLLM TTFT (per pod)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 59
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "{{pod}}-avg",
+              "expr": "label_replace((sum by(pod) (rate(vllm:time_to_first_token_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum by(pod) (rate(vllm:time_to_first_token_seconds_count{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "{{pod}}-p99",
+              "expr": "label_replace((histogram_quantile(0.99, sum by(pod,le) (rate(vllm:time_to_first_token_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Time-to-first-token per pod (avg and p99, short pod names). One pod well above the others = problem on that replica."
+        },
+        {
+          "type": "timeseries",
+          "title": "vLLM ITL (overall)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 67
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "Mean",
+              "expr": "sum(rate(vllm:inter_token_latency_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(vllm:inter_token_latency_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "P50",
+              "expr": "histogram_quantile(0.5, sum by(le) (rate(vllm:inter_token_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "C",
+              "legendFormat": "P90",
+              "expr": "histogram_quantile(0.9, sum by(le) (rate(vllm:inter_token_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "D",
+              "legendFormat": "P95",
+              "expr": "histogram_quantile(0.95, sum by(le) (rate(vllm:inter_token_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "E",
+              "legendFormat": "P99",
+              "expr": "histogram_quantile(0.99, sum by(le) (rate(vllm:inter_token_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Cluster-wide inter-token latency (decode step time)."
+        },
+        {
+          "type": "timeseries",
+          "title": "vLLM ITL (per pod)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 67
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "{{pod}}-avg",
+              "expr": "label_replace((sum by(pod) (rate(vllm:inter_token_latency_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum by(pod) (rate(vllm:inter_token_latency_seconds_count{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "{{pod}}-p99",
+              "expr": "label_replace((histogram_quantile(0.99, sum by(pod,le) (rate(vllm:inter_token_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Inter-token latency per pod (avg and p99). Sustained rise on one pod = degraded decode on that replica."
+        },
+        {
+          "type": "timeseries",
+          "title": "vLLM E2E latency (overall)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 75
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "Mean",
+              "expr": "sum(rate(vllm:e2e_request_latency_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(vllm:e2e_request_latency_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "P50",
+              "expr": "histogram_quantile(0.5, sum by(le) (rate(vllm:e2e_request_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "C",
+              "legendFormat": "P90",
+              "expr": "histogram_quantile(0.9, sum by(le) (rate(vllm:e2e_request_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "D",
+              "legendFormat": "P95",
+              "expr": "histogram_quantile(0.95, sum by(le) (rate(vllm:e2e_request_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "E",
+              "legendFormat": "P99",
+              "expr": "histogram_quantile(0.99, sum by(le) (rate(vllm:e2e_request_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Full request latency across all pods (queue + prefill + decode)."
+        },
+        {
+          "type": "timeseries",
+          "title": "vLLM E2E latency (per pod)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 75
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "{{pod}}-avg",
+              "expr": "label_replace((sum by(pod) (rate(vllm:e2e_request_latency_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum by(pod) (rate(vllm:e2e_request_latency_seconds_count{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "{{pod}}-p99",
+              "expr": "label_replace((histogram_quantile(0.99, sum by(pod,le) (rate(vllm:e2e_request_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Full request latency per pod (avg and p99), queue + prefill + decode."
+        },
+        {
+          "type": "timeseries",
+          "title": "vLLM queue / prefill / decode time (mean)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 83
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "Queue (mean)",
+              "expr": "sum(rate(vllm:request_queue_time_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(vllm:request_queue_time_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "B",
+              "legendFormat": "Prefill (mean)",
+              "expr": "sum(rate(vllm:request_prefill_time_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(vllm:request_prefill_time_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            },
+            {
+              "refId": "C",
+              "legendFormat": "Decode (mean)",
+              "expr": "sum(rate(vllm:request_decode_time_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum(rate(vllm:request_decode_time_seconds_count{namespace=\"sir-llm-platform\"}[5m]))",
+              "editor": false,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              }
+            }
+          ],
+          "description": "Mean engine time breakdown per pod. TTFT ~= queue + prefill; decode dominates long generations."
+        },
+        {
+          "type": "row",
+          "title": "Load balancing across vLLM replicas",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 91
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "title": "Generation token throughput per pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 92
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "label_replace((sum by(pod) (rate(vllm:generation_tokens_total{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Rebalancing signal — uneven bars mean the router is not spreading load."
+        },
+        {
+          "type": "timeseries",
+          "title": "Running requests per pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 92
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "label_replace((sum by(pod) (vllm:num_requests_running{namespace=\"sir-llm-platform\"})), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "KV cache usage per pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 100
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "percent",
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "label_replace((sum by(pod) (max by(pod,engine) (vllm:kv_cache_usage_perc{namespace=\"sir-llm-platform\"}))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "A pod pinned near 100% while others are idle = imbalance."
+        },
+        {
+          "type": "timeseries",
+          "title": "Request success rate per pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 100
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "label_replace((sum by(pod) (rate(vllm:request_success_total{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "Cache & Speculative decoding (MTP)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 108
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "type": "gauge",
+          "title": "Prefix cache hit rate",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 0,
+            "y": 109
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 100,
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 60
+                  },
+                  {
+                    "color": "green",
+                    "value": 85
+                  }
+                ]
+              },
+              "mappings": [],
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "orientation": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(vllm:prefix_cache_hits_total{namespace=\"sir-llm-platform\"}[5m])) / sum (rate(vllm:prefix_cache_queries_total{namespace=\"sir-llm-platform\"}[5m])) * 100",
+              "legendFormat": "hit %",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Local prefix-cache effectiveness. ~69% at idle."
+        },
+        {
+          "type": "gauge",
+          "title": "External KV-sidecar hit rate",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 6,
+            "y": 109
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 100,
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 60
+                  },
+                  {
+                    "color": "green",
+                    "value": 85
+                  }
+                ]
+              },
+              "mappings": [],
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "orientation": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(vllm:external_prefix_cache_hits_total{namespace=\"sir-llm-platform\"}[5m])) / sum (rate(vllm:external_prefix_cache_queries_total{namespace=\"sir-llm-platform\"}[5m])) * 100",
+              "legendFormat": "hit %",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "KV transfer sidecar. 0 means it is not serving cross-engine prefixes yet."
+        },
+        {
+          "type": "gauge",
+          "title": "MTP acceptance rate",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 12,
+            "y": 109
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 100,
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 60
+                  },
+                  {
+                    "color": "green",
+                    "value": 85
+                  }
+                ]
+              },
+              "mappings": [],
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "orientation": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(vllm:spec_decode_num_accepted_tokens_total{namespace=\"sir-llm-platform\"}[5m])) / sum (rate(vllm:spec_decode_num_draft_tokens_total{namespace=\"sir-llm-platform\"}[5m])) * 100",
+              "legendFormat": "accept %",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Spec-decode efficiency. ~65% means MTP is helping."
+        },
+        {
+          "type": "timeseries",
+          "title": "Speculative: draft vs accepted tokens",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 18,
+            "y": 109
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(vllm:spec_decode_num_draft_tokens_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "draft",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "sum (rate(vllm:spec_decode_num_accepted_tokens_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "accepted",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Cached vs recomputed prompt tokens",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 117
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(vllm:prompt_tokens_cached_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "cached (free)",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "sum (rate(vllm:prompt_tokens_recomputed_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "recomputed",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Less recomputation = better cache reuse."
+        },
+        {
+          "type": "timeseries",
+          "title": "Prefix cache hit/miss rate",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 117
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(vllm:prefix_cache_hits_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "hits/s",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "sum (rate(vllm:prefix_cache_queries_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "queries/s",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "Reliability & preemption",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 125
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "title": "Preemption rate",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 126
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum (rate(vllm:num_preemptions_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "preemptions/s",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": ">0 means KV cache pressure is forcing requests to recompute. Watch for spikes."
+        },
+        {
+          "type": "timeseries",
+          "title": "Waiting requests by reason",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 126
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by(reason) (vllm:num_requests_waiting_by_reason{namespace=\"sir-llm-platform\"})",
+              "legendFormat": "{{reason}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "capacity = no free seq slots; deferred = waiting on scheduling."
+        },
+        {
+          "type": "timeseries",
+          "title": "Engine sleep state",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 134
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "label_replace((sum by(pod) (max by(pod) (vllm:engine_sleep_state{namespace=\"sir-llm-platform\"}))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "1 = asleep (timeshare off), 0 = awake. Should track router awake-instances."
+        },
+        {
+          "type": "row",
+          "title": "NPU hardware (2 deployment nodes)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 142
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "title": "AICore utilization",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 143
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "percent",
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "npu_chip_info_utilization{instance=~\"$npu_node\"}",
+              "legendFormat": "{{instance}}:chip{{id}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Compute utilization per Ascend 910B chip on the two hosting nodes."
+        },
+        {
+          "type": "timeseries",
+          "title": "HBM memory used",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 143
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "Mbytes"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "npu_chip_info_hbm_used_memory{instance=~\"$npu_node\"}",
+              "legendFormat": "{{instance}}:chip{{id}} used",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "npu_chip_info_hbm_total_memory{instance=~\"$npu_node\"}",
+              "legendFormat": "{{instance}}:chip{{id}} total",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Temperature",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 151
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "unit": "celsius"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "npu_chip_info_temperature{instance=~\"$npu_node\"}",
+              "legendFormat": "{{instance}}:chip{{id}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Power draw",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 151
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "watt"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "npu_chip_info_power{instance=~\"$npu_node\"}",
+              "legendFormat": "{{instance}}:chip{{id}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "NPU chips unhealthy",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 0,
+            "y": 159
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "count(npu_chip_info_health_status{instance=~\"$npu_node\"}) - count(npu_chip_info_health_status{instance=~\"$npu_node\"}==0)",
+              "legendFormat": "unhealthy",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Should be 0. Non-zero = a chip on a deployment node is degraded."
+        },
+        {
+          "type": "stat",
+          "title": "HBM ECC double-bit errors",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 6,
+            "y": 159
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "max(npu_chip_info_hbm_ecc_double_bit_error_cnt{instance=~\"$npu_node\"})",
+              "legendFormat": "dbl-bit errs",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Double-bit ECC = unrecoverable HBM fault. Should stay 0."
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 41,
+      "tags": [
+        "sir-llm-platform",
+        "vllm",
+        "router",
+        "npu",
+        "qwen3-8b"
+      ],
+      "templating": {
+        "list": [
+          {
+            "current": {
+              "selected": true,
+              "text": "prometheus",
+              "value": "prometheus"
+            },
+            "includeAll": false,
+            "label": "datasource",
+            "name": "DS_PROMETHEUS",
+            "options": [],
+            "query": "prometheus",
+            "refresh": 1,
+            "regex": "",
+            "type": "datasource"
+          },
+          {
+            "current": {
+              "selected": true,
+              "text": [
+                "devserver-0 (7.242.96.11)",
+                "devserver-1 (7.242.99.216)"
+              ],
+              "value": [
+                "7.242.96.11:8082",
+                "7.242.99.216:8082"
+              ]
+            },
+            "includeAll": true,
+            "allValue": "7[.]242[.](96[.]11|99[.]216):8082",
+            "label": "NPU node",
+            "multi": true,
+            "name": "npu_node",
+            "options": [
+              {
+                "selected": true,
+                "text": "devserver-0 (7.242.96.11)",
+                "value": "7.242.96.11:8082"
+              },
+              {
+                "selected": true,
+                "text": "devserver-1 (7.242.99.216)",
+                "value": "7.242.99.216:8082"
+              }
+            ],
+            "query": "devserver-0 (7.242.96.11):7.242.96.11:8082, devserver-1 (7.242.99.216):7.242.99.216:8082",
+            "type": "custom"
+          }
+        ]
+      },
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "sir-llm-platform / vLLM + Router + NPU",
+      "uid": "sir-llm-platform-vllm",
+      "version": 1,
+      "weekStart": ""
+    }

@@ -23,68 +23,14 @@ prometheus:
     # Scrape interval
     scrapeInterval: 15s
     scrapeTimeout: 10s
-    # Additional scrape configs
-    additionalScrapeConfigs:
-      - job_name: 'vllm-metrics'
-        kubernetes_sd_configs:
-          - role: pod
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            action: keep
-            regex: vllm
-          - source_labels: [__meta_kubernetes_pod_namespace]
-            action: keep
-            regex: sir-llm-platform
-          - source_labels: [__meta_kubernetes_pod_name]
-            action: replace
-            target_label: pod
-          - action: labelmap
-            regex: __meta_kubernetes_pod_label_(.+)
-          - action: replace
-            source_labels: [__meta_kubernetes_pod_name]
-            target_label: pod
-          # Map container port to metrics path
-          - source_labels: [__meta_kubernetes_pod_container_port_number]
-            action: keep
-            regex: "8200|9101"
-        scheme: http
-        metrics_path: /metrics
-
-      - job_name: 'router-metrics'
-        kubernetes_sd_configs:
-          - role: pod
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            action: keep
-            regex: router-service
-          - source_labels: [__meta_kubernetes_pod_namespace]
-            action: keep
-            regex: sir-llm-platform
-          - source_labels: [__meta_kubernetes_pod_name]
-            action: replace
-            target_label: pod
-          - action: labelmap
-            regex: __meta_kubernetes_pod_label_(.+)
-        scheme: http
-        metrics_path: /metrics
-
-      - job_name: 'litellm-metrics'
-        kubernetes_sd_configs:
-          - role: pod
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            action: keep
-            regex: litellm
-          - source_labels: [__meta_kubernetes_pod_namespace]
-            action: keep
-            regex: sir-llm-platform
-          - source_labels: [__meta_kubernetes_pod_container_port_number]
-            action: keep
-            regex: "4000"
-          - action: labelmap
-            regex: __meta_kubernetes_pod_label_(.+)
-        scheme: http
-        metrics_path: /metrics
+    # NOTE: no additionalScrapeConfigs here. vLLM / router / LiteLLM are scraped by the
+    # PodMonitors in monitoring/servicemonitors.yaml (labeled release: prometheus).
+    # Raw scrape jobs were previously defined here but produced ZERO targets: the
+    # label regexes matched app=vllm / app=litellm while the pods are actually labeled
+    # app=vllm-qwen3-8b / app=litellm-proxy (relabel regexes are fully anchored).
+    # They also risked double-scraping the router. If you need the vLLM wrapper thread
+    # endpoint (:9101, metric vllm_threads), add a second podMetricsEndpoint with
+    # port: vllmthr to the vllm-metrics PodMonitor instead.
 
 alertmanager:
   enabled: false

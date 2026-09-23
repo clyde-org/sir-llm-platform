@@ -4,6 +4,8 @@
 # These defaults reproduce the current production deployment:
 #   Client -> LiteLLM (30400) -> kv-router (8080) -> vLLM x4 (TP=4) + kv-sidecar
 #                                              -> Redis (queue state)
+# The only live override is mooncake.{enabled,attachToVllm}=true
+# (see DEPLOYMENT.md, "Helm Values File").
 #
 # Override per-environment with -f values/<env>.yaml (e.g. values-qwen38b.yaml,
 # values-presentation-*.yaml).
@@ -16,10 +18,11 @@ global:
 
 # Model configuration
 model:
-  servedName: qwen3-8b        # served / registered model name
+  servedName: qwen3.8-27b     # served / registered model name
+  legacyAlias: qwen3.8-27b-131k   # litellm-only alias for the 131k pool (empty to disable)
   modelSubPath: Qwen3.8-27B   # subPath under modelVolume.hostPath
   tensorParallelSize: 4       # NPUs per pod (TP=4)
-  replicas: 4                 # one pod per 4-NPU node (4 phase-1 nodes)
+  replicas: 4                 # 2 pods per 8-NPU node (2 phase-1 nodes) → all 8 NPUs/node occupied
   batchSize: 8                # --max-num-seqs; router FIXED_BATCH_ESTIMATE
   maxModelLen: 131072         # 128k context
   maxNumBatchedTokens: 8192
@@ -40,6 +43,10 @@ images:
   vllm: quay.io/ascend/vllm-ascend:v0.23.0rc1
   redis: docker.io/library/redis:7-alpine
   litellm: ghcr.io/berriai/litellm:main-stable
+  # The vllm-ascend image ships the whole Mooncake stack (mooncake_master,
+  # HTTP metadata server, NPU transfer engine, MooncakeStoreConnector), so the
+  # master reuses it — already pulled on every node.
+  mooncakeMaster: quay.io/ascend/vllm-ascend:v0.23.0rc1
 
 # vLLM inference engine
 vllm:
@@ -49,17 +56,15 @@ vllm:
   trustRemoteCode: true
   nodeSelector:
     llm-pool: qwen-38b-phase1
-  # ClientIP session affinity pins each client to one vLLM pod, keeping
-  # prefix/prompt-cache locality on a single backend (KV-cache affinity).
-  sessionAffinity: ClientIP
-  sessionAffinityTimeoutSeconds: 10800
 
 # kv-router
 router:
   serviceName: router-service
   replicas: 1
-  imageTag: latest
-  imagePullPolicy: Always
+  imageTag: "d66e429"   # llm-la-icbc commit; never :latest (adds model-aware /v1/messages)
+  # ghcr.io is not reachable from cluster nodes (proxy-only); images are
+  # imported into containerd directly, so never ask kubelet to pull.
+  imagePullPolicy: IfNotPresent
   port: 8080
   resultsZmqPort: 5559
   serviceType: ClusterIP       # deployed as ClusterIP (no external NodePort)
@@ -87,8 +92,10 @@ router:
 # kv-sidecar (one per vLLM pod)
 sidecar:
   enabled: true
-  imageTag: latest
-  imagePullPolicy: Always
+  imageTag: "842a170"   # llm-la-icbc commit; never :latest
+  # ghcr.io is not reachable from cluster nodes (proxy-only); images are
+  # imported into containerd directly, so never ask kubelet to pull.
+  imagePullPolicy: IfNotPresent
   streamingMode: true
 
 # LiteLLM API proxy
@@ -97,9 +104,19 @@ litellm:
   serviceName: litellm-proxy
   port: 4000
   nodePort: 30400
-  masterKey: "sk-sirlab"
-  # LiteLLM points directly at vLLM (bypasses the kv-router) in the live setup.
-  apiBase: "http://vllm-qwen3-8b:8200/v1"
+  masterKey: "sk-qwen38b-local"
+  # LiteLLM routes through the kv-router, which spreads requests across the
+  # 2 vLLM replicas (litellm -> router -> kv-sidecar -> vllm).
+  apiBase: "http://router-service:8080/v1"
+  # Anthropic /v1/messages forwarding target. The router's model-aware
+  # /v1/messages raw-forward picks the pool from the request body's `model`
+  # field (upstream map templated as ANTHROPIC_UPSTREAMS in 03-router.yaml).
+  # Clients use one stable base URL and select the model by name.
+  anthropicMessagesTarget: "http://router-service:8080/v1/messages"
+  # Legacy static pass-through for the 262k pool, for clients that bake the
+  # pool into the URL (ANTHROPIC_BASE_URL=http://<litellm>:30400/262k).
+  # Kept for compatibility; new clients should use /v1/messages + model name.
+  anthropicMessagesTarget262k: "http://vllm-qwen3-8b-p2:8200/v1/messages"
   detailedDebug: false
 
 # Second Service exposing the vLLM pods for the Claude Code client
@@ -110,8 +127,96 @@ claudeService:
   serviceType: ClusterIP
   nodePort: 32387              # used only if serviceType=NodePort
 
+# Mooncake: cluster-wide KV-cache store (KVCache-centric disaggregation).
+#
+# enabled=true deploys mooncake-master (metadata/control) + Service + the
+# store ConfigMap. attachToVllm=true additionally restarts the vLLM pods
+# (rolling) with the store connector attached: every TP rank registers
+# store.globalSegmentSize of node DRAM with the pool, so prefix blocks
+# survive eviction and are readable by any pod (router affinity stays the
+# fast path; the store is the cross-pod / post-eviction fallback).
+#
+# Sizing note: embedded mode is PER TP RANK — pool = globalSegmentSize x
+# tensorParallelSize x replicas (default: 8GB x 4 x 4 = 128 GiB).
+#
+# Transport: the vllm-ascend NPU build only works with protocol=ascend —
+# its kv_pool MooncakeBackend raises NotImplementedError for any other
+# protocol, and the shared transfer engine is hard-initialized with the
+# "ascend" protocol. The generic MooncakeStoreConnector + protocol=tcp
+# registers segments fine but every BatchPut fails (verified 2026-09-22:
+# 31k put starts, 0 put ends) — do not use it on this image.
+mooncake:
+  enabled: false
+  attachToVllm: false
+  # vLLM --kv-transfer-config kv_connector. AscendStoreConnector is the
+  # NPU-native store connector in this build; MooncakeStoreConnector is
+  # deprecated upstream ("will be removed in the future") and its tcp
+  # data path is broken on the NPU image.
+  kvConnector: AscendStoreConnector
+  serviceName: mooncake-master
+  configMapName: mooncake-store-config
+  replicas: 1
+  rpcPort: 50051
+  metadataPort: 8080
+  metricsPort: 9003
+  evictionHighWatermark: "0.9"
+  ha:
+    # High-availability metadata via the existing Redis (phase 2; the
+    # connstring format is passed through verbatim to the master).
+    enabled: false
+    connstring: ""
+  store:
+    mode: embedded          # embedded | standalone-store (read by legacy connector only)
+    # NPU fabric transport (NOT rdma/tcp). Must be "ascend" on this image —
+    # see the comment on kvConnector above.
+    protocol: ascend
+    deviceName: ""          # RDMA device name (rdma only)
+    globalSegmentSize: "8GB"  # per TP rank; see sizing note above
+    localBufferSize: "4GB"   # per TP rank, transfer staging buffer
+    enableOffload: false    # SSD offload tier (phase 2, needs root_fs_dir)
+  # MUST stay false on this build (v0.3.11.post1 NPU, tcp protocol) with
+  # auto-picked segment ports (MC_STORE_CLIENT_MIN/MAX_PORT). In legacy mode
+  # the engine re-binds the registered segment port with a NEW socket, but
+  # RealClient's auto-port path (AutoPortBinder) already holds that exact
+  # port for the whole client-creation + client lifetime → guaranteed
+  # EADDRINUSE on every rank (real_client.cpp: "Failed to create client on
+  # port X, retry 20/20") → "Initialize MooncakeDistributedStore failed" →
+  # engine core crash loop. New-mapping mode reuses the binder's live fd, so
+  # no second bind happens; the engine listens on a different port published
+  # via rpc_meta (writers dial tcp_data_port from the segment desc, not the
+  # registered port). Old pods ran 22h+ healthy in this mode.
+  legacyRpcPortBinding: false
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "4Gi"
+    limits:
+      cpu: "2000m"
+      memory: "8Gi"
+
 # Redis (queue state + backend discovery)
 redis:
   port: 6379
   serviceType: ClusterIP       # deployed as ClusterIP (no external NodePort)
   nodePort: 30079              # used only if serviceType=NodePort
+
+# Phase-2 vLLM pool: 910B3 64GB HBM nodes (node3/node4), additive to the
+# phase-1 pool above. Off by default; enable explicitly per rollout:
+#   Phase 1 (single-pod validation): --set phase2.enabled=true --set phase2.pinnedNode=node3
+#   Phase 2 (2 per node):            --set phase2.enabled=true --set phase2.replicas=4
+#   Phase 3 (long context):          ... --set phase2.maxModelLen=262144
+# NOTE: deliberately mooncake-free (no --kv-transfer-config / MOONCAKE_CONFIG_PATH /
+# /etc/mooncake volume) — the mooncake KV store breaks this vLLM build; the
+# phase-1 pool is also running without it (release rev 11). The kv-sidecar and
+# --kv-events-config are kept (independent of mooncake).
+phase2:
+  enabled: false
+  serviceName: vllm-qwen3-8b-p2
+  # p2 pool serves under its own model name (262k context); old pool keeps
+  # model.servedName. Users pick the model explicitly (litellm /v1/models).
+  servedName: qwen3.8-27b-262k
+  replicas: 1
+  tensorParallelSize: 4
+  maxModelLen: 131072          # raise to 262144 in phase 3 after router len-aware check
+  poolLabel: qwen-38b-phase2   # nodeSelector llm-pool value
+  pinnedNode: ""               # kubernetes.io/hostname pin (e.g. node3); empty = scheduler spreads

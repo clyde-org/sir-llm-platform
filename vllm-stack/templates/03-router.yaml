@@ -232,6 +232,12 @@ spec:
               value: "/result_submit"
             - name: MODEL_CONFIG_PATH
               value: "/etc/model-registry/models.yaml"
+            # ---- Anthropic /v1/messages raw-forward upstreams ----
+            # JSON model->URL map. LiteLLM's root /v1/messages pass-through
+            # lands here; the request body's `model` field picks the pool
+            # (same model namespace as /v1/chat/completions).
+            - name: ANTHROPIC_UPSTREAMS
+              value: {{ include "vllm-stack.anthropicUpstreams" . | quote }}
 
           ports:
             - containerPort: {{ .Values.router.port }}

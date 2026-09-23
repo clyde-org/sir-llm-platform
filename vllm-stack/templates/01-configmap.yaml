@@ -75,6 +75,555 @@ data:
                     return
                 await send(msg)
             await self.app(scope, receive, ps)
+  sitecustomize.py: |
+    # Auto-imported by every Python process in the vLLM pod (stdlib site hook;
+
+    # this directory is on PYTHONPATH via the vllm-fingerprint-mw ConfigMap mount).
+
+    #
+
+    # MooncakeStoreConnector compat patches for vLLM 0.23 on hybrid models:
+
+    #
+
+    #   1. vLLM 0.23 moved the KV block count out of CacheConfig.num_gpu_blocks
+
+    #      into KVCacheConfig.num_blocks, but MooncakeStoreWorker.register_kv_caches
+
+    #      still asserts on the legacy field and uses it for segment math. We
+
+    #      capture kv_cache_config in __init__ and back-fill the legacy field.
+
+    #
+
+    #   2. register_kv_caches() is re-implemented per KV-cache group. The original
+
+    #      registers every storage once and then gives ALL group token-databases
+
+    #      the SAME (addrs, block_lens) lists. That is only correct for
+
+    #      single-group models; on hybrid models (e.g. Qwen3.8-27B: 1
+
+    #      FullAttention group + 3 GDN/Mamba groups) each group's db would index
+
+    #      the OTHER groups' storages with the shared block ids, so PUTs would
+
+    #      read foreign bytes and loads would clobber foreign state. The patch
+
+    #      maps each kv_caches entry to its group via KVCacheGroupSpec.layer_names
+
+    #      (exact key match, verified against the live model layout), registers
+
+    #      only that group's storages for that group's db, and handles the
+
+    #      platform-specific value shapes (Ascend passes attention caches as
+
+    #      (k, v) tuples and GDN caches as lists of state tensors).
+
+    #
+
+    #      For single-group models the behavior is identical to the original.
+
+    #
+
+    # Applied lazily, only in processes that actually import the Mooncake store
+
+    # connector worker (vLLM TP workers with the connector enabled).
+
+    import importlib
+
+    import importlib.abc
+
+    import logging
+
+    import sys
+
+    
+
+    _MC_WORKER = "vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store.worker"
+
+    _FALLBACK_LOG = logging.getLogger("mooncake-fix")
+
+    
+
+    
+
+    def _mc_register_per_group(self, kv_caches, mod, orig_register):
+
+        import threading
+
+    
+
+        torch = mod.torch
+
+        logger = getattr(mod, "logger", None) or _FALLBACK_LOG
+
+    
+
+        # --- (1) resolve the KV block count (legacy field back-fill) ---
+
+        num_blocks = getattr(self.cache_config, "num_gpu_blocks", None)
+
+        if num_blocks is None:
+
+            kcc = getattr(self, "_mc_kv_cache_config", None)
+
+            if kcc is None or getattr(kcc, "num_blocks", None) is None:
+
+                raise RuntimeError(
+
+                    "mooncake-fix: cannot resolve KV block count "
+
+                    "(cache_config.num_gpu_blocks and kv_cache_config.num_blocks "
+
+                    "are both None)"
+
+                )
+
+            num_blocks = kcc.num_blocks
+
+            self.cache_config.num_gpu_blocks = num_blocks
+
+        self.num_blocks = num_blocks
+
+    
+
+        if not kv_caches:
+
+            logger.warning("No KV caches to offload.")
+
+            return
+
+    
+
+        groups = getattr(self, "_kv_cache_groups", None)
+
+        if not groups:
+
+            # Unknown layout: fall back to the original implementation.
+
+            return orig_register(self, kv_caches)
+
+    
+
+        key2gid = {}
+
+        for gi, g in enumerate(groups):
+
+            for ln in getattr(g, "layer_names", None) or []:
+
+                key2gid[ln] = gi
+
+    
+
+        def iter_tensors(v):
+
+            if isinstance(v, torch.Tensor):
+
+                yield v
+
+            elif isinstance(v, (list, tuple)):
+
+                for t in v:
+
+                    if isinstance(t, torch.Tensor):
+
+                        yield t
+
+    
+
+        # --- (2) collect each group's unique storages; register each buffer once
+
+        per_group_stor = [[] for _ in groups]
+
+        per_group_seen = [set() for _ in groups]
+
+        reg_done = set()
+
+        spillover_stor, spillover_seen = [], set()
+
+        unassigned = []
+
+    
+
+        for key, v in kv_caches.items():
+
+            gi = key2gid.get(key)
+
+            tensors = list(iter_tensors(v))
+
+            if not tensors:
+
+                unassigned.append((key, type(v).__name__))
+
+                continue
+
+            if gi is None:
+
+                buckets, seen = spillover_stor, spillover_seen
+
+            else:
+
+                buckets, seen = per_group_stor[gi], per_group_seen[gi]
+
+            for t in tensors:
+
+                st = t.untyped_storage()
+
+                ptr = st.data_ptr()
+
+                if ptr in seen:
+
+                    continue
+
+                seen.add(ptr)
+
+                if ptr not in reg_done:
+
+                    reg_done.add(ptr)
+
+                    ret = self.store.register_buffer(ptr, st.nbytes())
+
+                    if ret != 0:
+
+                        logger.error(
+
+                            "register_buffer failed for addr %#x len %d: %d",
+
+                            ptr,
+
+                            st.nbytes(),
+
+                            ret,
+
+                        )
+
+                buckets.append((t, st))
+
+    
+
+        if spillover_stor:
+
+            # Storage not claimed by any group (e.g. cross-layer unified tensors):
+
+            # attach to the full-attention group so it is transferred at all.
+
+            fa = next(
+
+                (
+
+                    gi
+
+                    for gi, g in enumerate(groups)
+
+                    if type(getattr(g, "kv_cache_spec", None)).__name__
+
+                    == "FullAttentionSpec"
+
+                ),
+
+                0,
+
+            )
+
+            for item in spillover_stor:
+
+                if item[1].data_ptr() not in per_group_seen[fa]:
+
+                    per_group_seen[fa].add(item[1].data_ptr())
+
+                    per_group_stor[fa].append(item)
+
+            logger.warning(
+
+                "mooncake-fix: %d unassigned kv entries attached to group %d: %s",
+
+                len(spillover_stor),
+
+                fa,
+
+                [k for k, _ in unassigned] or "see kv entries",
+
+            )
+
+        if unassigned:
+
+            logger.warning("mooncake-fix: non-tensor kv entries skipped: %s", unassigned)
+
+    
+
+        # --- (3) per group: build (addrs, block_lens) with the original
+
+        #     stride-based segment logic and hand them to that group's db only
+
+        dbs = self.token_dbs
+
+        for gi, stor_list in enumerate(per_group_stor):
+
+            addrs, block_lens = [], []
+
+            for t, st in stor_list:
+
+                base = st.data_ptr()
+
+                region_len = st.nbytes()
+
+                el = t.element_size()
+
+                page_size_bytes = region_len // num_blocks
+
+                outer_dims = [
+
+                    d for d in range(t.ndim) if t.stride(d) * el > page_size_bytes
+
+                ]
+
+                if not outer_dims:
+
+                    addrs.append(base)
+
+                    block_lens.append(page_size_bytes)
+
+                else:
+
+                    seg_stride = t.stride(outer_dims[0]) * el
+
+                    for idx in range(t.shape[outer_dims[0]]):
+
+                        addrs.append(base + idx * seg_stride)
+
+                        block_lens.append(seg_stride // num_blocks)
+
+            dbs[gi].set_kv_caches_base_addr(addrs)
+
+            dbs[gi].set_block_len(block_lens)
+
+            logger.info(
+
+                "Registered KV caches: group=%d spec=%s segments=%d num_blocks=%d",
+
+                gi,
+
+                type(getattr(groups[gi], "kv_cache_spec", None)).__name__,
+
+                len(addrs),
+
+                num_blocks,
+
+            )
+
+    
+
+        # --- (4) start transfer threads (verbatim from the original) ---
+
+        if self.kv_role in ["kv_producer", "kv_both"]:
+
+            ready_event_sending = threading.Event()
+
+            self.kv_send_thread = mod.KVCacheStoreSendingThread(
+
+                self.store,
+
+                self.coord,
+
+                self.token_dbs,
+
+                self.block_size,
+
+                self.tp_rank,
+
+                self.put_step,
+
+                self.kv_role,
+
+                ready_event_sending,
+
+                self.enable_kv_events,
+
+                self.store_replicate_config,
+
+                record_operation=self._record_kv_connector_operation,
+
+            )
+
+            self.kv_send_thread.start()
+
+    
+
+        ready_event_recving = threading.Event()
+
+        self.kv_recv_thread = mod.KVCacheStoreRecvingThread(
+
+            self.store,
+
+            self.coord,
+
+            self.token_dbs,
+
+            self.block_size,
+
+            self.tp_rank,
+
+            ready_event_recving,
+
+            disk_offload_buffer_budget_bytes=self.disk_offload_buffer_budget_bytes,
+
+            record_operation=self._record_kv_connector_operation,
+
+        )
+
+        self.kv_recv_thread.start()
+
+        ready_event_recving.wait()
+
+    
+
+    
+
+    def _mc_diag(self, kv_caches):
+
+        try:
+
+            groups = []
+
+            for gi, g in enumerate(getattr(self, "_kv_cache_groups", []) or []):
+
+                spec = getattr(g, "kv_cache_spec", None)
+
+                groups.append(
+
+                    {
+
+                        "gid": gi,
+
+                        "spec": type(spec).__name__ if spec is not None else None,
+
+                        "block_size": getattr(spec, "block_size", None),
+
+                        "n_layers": len(getattr(g, "layer_names", None) or []),
+
+                    }
+
+                )
+
+            print(f"[mooncake-fix] groups: {groups}", file=sys.stderr)
+
+        except Exception as e:
+
+            print(f"[mooncake-fix] diag failed: {e}", file=sys.stderr)
+
+    
+
+    
+
+    def _mc_apply(module):
+
+        W = module.MooncakeStoreWorker
+
+        if getattr(W, "_mc_num_blocks_patched", False):
+
+            return
+
+        orig_init = W.__init__
+
+        orig_register = W.register_kv_caches
+
+    
+
+        def patched_init(self, vllm_config, kv_cache_config, *a, **kw):
+
+            orig_init(self, vllm_config, kv_cache_config, *a, **kw)
+
+            try:
+
+                self._mc_kv_cache_config = kv_cache_config
+
+            except Exception:
+
+                pass
+
+    
+
+        def patched_register(self, kv_caches):
+
+            _mc_diag(self, kv_caches)
+
+            return _mc_register_per_group(self, kv_caches, module, orig_register)
+
+    
+
+        W.__init__ = patched_init
+
+        W.register_kv_caches = patched_register
+
+        W._mc_num_blocks_patched = True
+
+        print(
+
+            "[mooncake-fix] MooncakeStoreWorker per-group registration patch installed",
+
+            file=sys.stderr,
+
+        )
+
+    
+
+    
+
+    class _MCWorkerFinder(importlib.abc.MetaPathFinder):
+
+        def find_spec(self, fullname, path=None, target=None):
+
+            if fullname != _MC_WORKER:
+
+                return None
+
+            # Let the normal machinery locate the module, then wrap its exec.
+
+            sys.meta_path.remove(self)
+
+            try:
+
+                import importlib.util
+
+                spec = importlib.util.find_spec(fullname)
+
+            finally:
+
+                sys.meta_path.insert(0, self)
+
+            if spec is None or spec.loader is None:
+
+                return None
+
+            orig_exec = spec.loader.exec_module
+
+    
+
+            def exec_module(mod):
+
+                orig_exec(mod)
+
+                try:
+
+                    _mc_apply(mod)
+
+                except Exception as e:
+
+                    print(f"[mooncake-fix] patch failed: {e}", file=sys.stderr)
+
+    
+
+            spec.loader.exec_module = exec_module
+
+            return spec
+
+    
+
+    
+
+    sys.meta_path.insert(0, _MCWorkerFinder())
+
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -95,6 +644,18 @@ data:
         router_params:
           label_selector: "model={{ .Values.model.servedName }}"
           batch_size: {{ .Values.model.batchSize }}
+{{- if .Values.phase2.enabled }}
+      - model_name: {{ .Values.phase2.servedName | default .Values.model.servedName | quote }}
+        litellm_params:
+          model: "openai/{{ .Values.phase2.servedName | default .Values.model.servedName }}"
+          api_base: "http://{{ .Values.router.serviceName }}:{{ .Values.router.port }}/v1"
+          api_key: "dummy"
+        router_params:
+          # In pull mode queues are keyed by the model name the sidecar
+          # declares (MODEL_NAME); this selector is informational (KV watcher).
+          label_selector: "app={{ .Values.phase2.serviceName }}"
+          batch_size: {{ .Values.model.batchSize }}
+{{- end }}
 ---
 {{- if .Values.litellm.enabled }}
 apiVersion: v1
@@ -114,6 +675,23 @@ data:
           model: "openai/{{ .Values.model.servedName }}"
           api_base: "{{ .Values.litellm.apiBase }}"
           api_key: "dummy"
+{{- if .Values.model.legacyAlias }}
+      # Alias for the legacy pool (same upstream model name; the 131k context
+      # cap is documented via the alias name, not enforced by litellm).
+      - model_name: {{ .Values.model.legacyAlias | quote }}
+        litellm_params:
+          model: "openai/{{ .Values.model.servedName }}"
+          api_base: "{{ .Values.litellm.apiBase }}"
+          api_key: "dummy"
+{{- end }}
+{{- if .Values.phase2.enabled }}
+      # 262k-context pool (phase-2 nodes); served under its own model name.
+      - model_name: {{ .Values.phase2.servedName | default .Values.model.servedName | quote }}
+        litellm_params:
+          model: "openai/{{ .Values.phase2.servedName | default .Values.model.servedName }}"
+          api_base: "{{ .Values.litellm.apiBase }}"
+          api_key: "dummy"
+{{- end }}
 
     router_settings:
       cooldown_time: 0
@@ -127,9 +705,27 @@ data:
         - path: "/raw/v1/chat/completions"
           target: "{{ .Values.litellm.apiBase }}/chat/completions"
           auth: true
+        # Anthropic /v1/messages: forwarded to the router's model-aware
+        # raw-forward endpoint. The request body's `model` field picks the pool
+        # (upstream map = ANTHROPIC_UPSTREAMS, see 03-router.yaml).
+        - path: "/v1/messages"
+          target: "{{ .Values.litellm.anthropicMessagesTarget }}"
+          auth: true
+{{- if .Values.phase2.enabled }}
+        # DEPRECATED legacy path for the 262k pool, for clients that bake the
+        # pool into the URL (ANTHROPIC_BASE_URL=http://<litellm>:30400/262k).
+        # New clients: /v1/messages + model={{ .Values.phase2.servedName | default .Values.model.servedName }}.
+        - path: "/262k/v1/messages"
+          target: "{{ .Values.litellm.anthropicMessagesTarget262k }}"
+          auth: true
+{{- end }}
       allow_requests_on_db_unavailable: false
 
+    # Prometheus metrics: WITHOUT the prometheus callbacks LiteLLM does not
+    # register the /metrics route at all (it 404s behind the auth middleware,
+    # which 401s everything without the master key). The scrape side authenticates
+    # via the litellm-bearer-token secret (see monitoring/servicemonitors.yaml).
     litellm_settings:
-      success_callback: []
-      failure_callback: []
+      success_callback: ["prometheus"]
+      failure_callback: ["prometheus"]
 {{- end }}
