@@ -1,56 +1,40 @@
-# Claude Code → Qwen3.8-27B (sir-llm-platform)
+# Claude Code → Qwen3.8-27B
 
-Use Claude Code CLI against the in-lab Qwen3.8-27B deployment instead of a cloud provider.
-
-## How it connects
-
-Claude Code talks to **LiteLLM** (NodePort **30400**) over its Anthropic
-`/v1/messages` pass-through route. LiteLLM forwards those requests to the
-**kv-router's model-aware `/v1/messages` endpoint**, which picks the serving
-pool from the request body's `model` field and raw-streams the request to that
-pool's vLLM (vLLM serves the Messages API natively) — the same model-name
-selection as the OpenAI `/v1/chat/completions` path (see
-[DEPLOYMENT.md](../DEPLOYMENT.md)). The base URL is therefore **stable**; the
-model (and its context pool) is chosen by name, exactly like Pi's config.
-**No `kubectl port-forward` required** — any machine that can reach a node IP
-on the lab network can use it directly.
-
-> **Migrating from the old `/262k` URL:** settings with
-> `ANTHROPIC_BASE_URL=http://<node>:30400/262k` keep working (the static
-> pass-through is retained), but that bakes the pool into the URL. Drop the
-> `/262k` suffix and select the pool via the model name instead
-> (`qwen3.8-27b-262k`, see below).
-
-If a machine cannot reach NodePort 30400, an alternative is to port-forward the
-`-claude` Service directly (see "Direct `-claude` Service" below).
+Use the Claude Code CLI against the in-lab Qwen3.8-27B instead of a cloud
+provider. Claude Code talks to LiteLLM (NodePort **30400**) over the Anthropic
+`/v1/messages` pass-through; the pool is picked by the `model` name, so the
+base URL is stable. No `kubectl port-forward` needed — any machine that can
+reach a node IP on the lab network works directly.
 
 ## Quick start
 
 ```bash
-# Copy the template into your user-level settings (back up any existing file first)
+# back up any existing file first
 cp settings.qwen3-8b.json ~/.claude/settings.json
 ```
 
-Or apply **per-project** by placing the settings in the project's `.claude/settings.json`
-(or `.claude/settings.local.json`), leaving `~/.claude/settings.json` for your normal provider.
+Or apply **per-project**: put the settings in the project's
+`.claude/settings.json` (or `.claude/settings.local.json`), keeping your normal
+provider at user level.
 
-## What it points at
+Verify: `claude -p "Reply with PONG"`
+
+## What the template sets
 
 | Setting | Value | Notes |
 |---------|-------|-------|
-| `ANTHROPIC_BASE_URL` | `http://7.242.101.107:30400` | LiteLLM NodePort, Anthropic `/v1/messages` (model-aware via kv-router) |
-| `ANTHROPIC_MODEL` | `qwen3.8-27b` | Default model — 131k pool (see Model selection) |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `qwen3.8-27b` | On custom endpoints the "Default (recommended)" entry resolves to this var, so the opus tier stays on the 131k pool |
+| `ANTHROPIC_BASE_URL` | `http://7.242.101.107:30400` | LiteLLM NodePort, Anthropic `/v1/messages` |
+| `ANTHROPIC_MODEL` | `qwen3.8-27b` | default — 131k pool |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `qwen3.8-27b` | "Default (recommended)" resolves to this var, so the default stays on 131k |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `qwen3.8-27b-262k` | Sonnet tier → 262k pool (long-context work) |
-| `ANTHROPIC_DEFAULT_*` | `qwen3.8-27b` | Haiku tier + small/fast model → 131k pool |
-| `"model"` | `qwen3.8-27b` | Pins the session to the 131k pool (overrides any user-level `"model"` alias) |
-| `ANTHROPIC_API_KEY` | `sk-qwen38b-local` | LiteLLM master key (required on the 30400 route) |
-| `CLAUDE_CODE_DISABLE_1M_CONTEXT` | `1` | Suppresses the spurious `[1m]` badge Claude Code appends to the default entry on custom endpoints |
-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `131072` | Must match the selected pool's limit (see below) |
-| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `8192` | Matches vLLM's per-request output budget |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` | `qwen3.8-27b` | → 131k pool |
+| `"model"` | `qwen3.8-27b` | pins the session to the 131k pool |
+| `ANTHROPIC_API_KEY` | `sk-qwen38b-local` | LiteLLM master key (**not** an Anthropic key) |
+| `CLAUDE_CODE_DISABLE_1M_CONTEXT` | `1` | suppresses the spurious `[1m]` badge on custom endpoints |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `131072` | **required** — see below |
+| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `8192` | matches the platform's per-request output budget |
 
-The tier names are the real served names, so the `/model` picker shows exactly
-the two pools, each labeled by the name it routes to:
+The `/model` picker shows the real served names (pick by name, not tier):
 
 ```
 Default (recommended)  qwen3.8-27b            (131k pool)
@@ -59,131 +43,32 @@ qwen3.8-27b-262k      Custom Sonnet model    (262k pool)
 qwen3.8-27b           Custom Haiku model     (131k pool)
 ```
 
-Switching a session to the 262k pool (Sonnet entry) is safe with the shipped
-`CLAUDE_CODE_AUTO_COMPACT_WINDOW=131072` — it just compacts earlier (~110k
-instead of ~218k).
+## Why `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is required
 
-## Model selection (131k vs 262k pool)
+Claude Code doesn't know this model name, so it assumes a **200k** context
+window and sets its autocompact trigger (~178.8k) *above* the model's 131072
+hard limit — long sessions die with `API Error: 500 … maximum context length
+is 131072` before compaction can fire. The template's `131072` puts the
+trigger at ≈110k, safely under the limit.
 
-The same Qwen3.8-27B weights are served by two pools under different model
-names; the router resolves the name from the request body:
+- For a session on the **262k** pool, raise it to `240000` and restart the
+  session (env is read at session start).
+- `CLAUDE_CODE_MAX_CONTEXT_TOKENS` does **not** fix this (only read when
+  `DISABLE_COMPACT` is set, which disables compaction entirely).
+- Don't "fix" it by raising vLLM `maxModelLen` — 131072 is the model's native
+  limit.
+- A session already past the limit can't be rescued by `/compact` — use
+  `/clear` or restart.
 
-| Model name | Pool | Context limit |
-|------------|------|---------------|
-| `qwen3.8-27b` | phase-1 (8× 910B nodes) | 131072 |
-| `qwen3.8-27b-262k` | phase-2 (910B3 64GB HBM nodes) | 262144 |
-| `qwen3.8-27b-131k` | phase-1 (alias) — **OpenAI path only** | 131072 |
+## Notes
 
-Note: on the Anthropic path (`/v1/messages`) use the canonical names above.
-The router forwards the request body verbatim and vLLM validates the model
-name, so the `-131k` alias 404s there — on the OpenAI path LiteLLM rewrites
-the alias to `qwen3.8-27b` before it reaches the router, which is why it
-works only via `/v1/chat/completions`.
-
-Pick per tier in the settings `env` block, e.g. default/short-context on the
-131k pool and long-context work on the 262k pool (this is what the template
-ships):
-
-```json
-"ANTHROPIC_MODEL": "qwen3.8-27b",
-"ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-27b",
-"ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b-262k",
-"ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3.8-27b",
-"ANTHROPIC_SMALL_FAST_MODEL": "qwen3.8-27b"
-```
-
-Note the tier-to-pool assignment is a bit inverted (sonnet = 262k, opus =
-131k) because on a custom endpoint the **"Default (recommended)" entry resolves
-to `ANTHROPIC_DEFAULT_OPUS_MODEL`** — keeping the opus tier on 131k is what
-makes the default (and the `"model"` pin) the 131k pool. The picker labels show
-the real model names, so pick the entry by name, not by tier.
-
-**`CLAUDE_CODE_AUTO_COMPACT_WINDOW` must match the pool the session's
-`ANTHROPIC_MODEL` uses:** `131072` for the 131k pool, `240000` for the 262k
-pool (window minus output buffer must stay under the pool's hard limit). The
-template ships with the 131k values; when pointing `ANTHROPIC_MODEL` at the
-262k pool, raise it accordingly and restart the session.
-
-## Important
-
-- **The API key is NOT an Anthropic key.** `sk-qwen38b-local` is the LiteLLM
-  master key shared by all lab clients (it is documented throughout this repo).
-  The direct `-claude` Service route (below) has no auth and accepts any
-  non-empty key.
-- The endpoint is protected only by that static lab key on the lab network —
-  anyone who knows it can call the model. Add a gateway/oauth proxy in front if
-  this needs to be locked down.
-- The template sets `NO_PROXY=... ,7.242.101.107`, i.e. the node IP is reached
-  **directly**, which is what works for lab workstations. If your machine can
-  only reach the cluster *through* a local HTTP(S) proxy (`127.0.0.1:3128`),
-  remove the node IP from `NO_PROXY` so requests route through the proxy
-  instead; if you have direct access and no local proxy, you can drop the
-  `*_PROXY` lines entirely.
-
-## Context window & autocompact (required)
-
-The served model name (`qwen3-8b` / `qwen3.8-27b`) is not in Claude Code's
-internal model registry, so Claude Code **assumes a 200k-token context window**.
-Its autocompact trigger is derived from that window (window − max output −
-buffer ≈ 178.8k), which sits **above** this deployment's hard limit of 128k
-(131072 tokens). Long sessions therefore die with:
-
-```
-API Error: 500 ... maximum context length is 131072
-```
-
-before autocompact ever gets a chance to fire.
-
-**Fix:** set `CLAUDE_CODE_AUTO_COMPACT_WINDOW=131072` in the `env` block —
-`settings.qwen3-8b.json` already includes it. This is the largest window that
-still leaves the trigger safely below the server's hard limit:
-
-- Autocompact trigger ≈ `131072 − maxOutput(8192) − buffer(~13k)` ≈ **109.9k**
-  tokens.
-- The worst request sent at the trigger ≈ 109.9k prompt + 8.2k output ≈
-  **118.1k** — still ~13k under 131,072, and the compaction request itself
-  fits comfortably.
-- Verified 2026-09-18 (initially at `100000`): with long-context usage,
-  autocompact fired automatically at 71,117 tokens and compacted cleanly down
-  to ~3.5k, with no 500. Raising the window to 131072 only moves the trigger
-  up to ≈110k, with the same margin — less frequent compaction, more usable
-  context. The env is read at session start, so **restart the session** after
-  changing the value.
-
-Equivalent ways to set it without editing the file:
-
-- `/autocompact 131072` in the REPL (persists to user settings)
-- `--autocompact` CLI flag
-
-Notes:
-
-- `CLAUDE_CODE_MAX_CONTEXT_TOKENS` does **not** fix this — Claude Code only
-  reads it when `DISABLE_COMPACT` is truthy, which *disables* autocompact
-  entirely.
-- Do not "fix" it by raising vLLM `maxModelLen`; 131072 is the model's native
-  context limit.
-- A session already past ~122k input tokens cannot be rescued with `/compact`
-  (compaction re-sends the whole conversation and 500s the same way) — use
-  `/clear` or restart the session.
-
-## Verify
-
-```bash
-claude -p "Reply with PONG"
-```
-
-## Alternative: direct `-claude` Service (port-forward only)
-
-If your machine cannot reach NodePort 30400 at all, you can bypass LiteLLM and
-talk to vLLM's Messages API directly:
-
-```bash
-# keep this running in a shell
-kubectl -n sir-llm-platform port-forward svc/vllm-qwen3-8b-claude 8200:8200
-```
-
-Then set `ANTHROPIC_BASE_URL=http://127.0.0.1:8200` in the settings. That
-Service has **no auth** — any non-empty `ANTHROPIC_API_KEY` works — and no
-`*_PROXY`/`NO_PROXY` entries are needed. Everything else (model name,
-`CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS`) stays the
-same.
+- The key is the shared lab master key, documented throughout this repo; the
+  endpoint is on the lab network only.
+- The template sets `NO_PROXY` to include the node IP (direct access). If your
+  machine reaches the cluster only through a local proxy
+  (`127.0.0.1:3128`), remove the node IP from `NO_PROXY`; with no proxy at
+  all, drop the `*_PROXY` lines.
+- **Fallback** if you can't reach NodePort 30400 at all:
+  `kubectl -n sir-llm-platform port-forward svc/vllm-qwen3-8b-claude 8200:8200`
+  and set `ANTHROPIC_BASE_URL=http://127.0.0.1:8200` (that Service has no
+  auth — any non-empty key works; drop the proxy entries).
