@@ -1,153 +1,123 @@
 # SIR LLM Platform
 
-Self-hosted LLM serving: **Qwen3.8-27B** on **Huawei Ascend 910B NPUs**, running
-**vLLM** behind a **KV-aware router** and a **LiteLLM** gateway, with a
-cluster-wide **Mooncake** KV-cache store and **Prometheus/Grafana** monitoring.
-Out-of-the-box client configs for **Claude Code**, **pi**, and chat GUIs.
-
-This README is the platform documentation: architecture, quick setup, quick user
-guide. Per-client how-tos live in their subdirectory READMEs:
+Self-hosted LLM serving: **Qwen3.8-27B** on **Huawei Ascend 910B NPUs** —
+**vLLM** + KV-aware router + **LiteLLM** gateway, Mooncake KV-cache store,
+Prometheus/Grafana monitoring. Client how-tos:
 [claude-code](claude-code/README.md) · [pi](pi/README.md) ·
-[deepseek-harness](deepseek-harness/README.md) · [monitoring](monitoring/README.md).
+[deepseek-harness](deepseek-harness/README.md) ·
+[monitoring](monitoring/README.md).
 
 ## Models & pools
 
-The same Qwen3.8-27B weights are served from two hardware pools under different
-names. The `model` field in the request body selects the pool on **both** API
-paths — there is only ever one base URL.
+Same weights, two hardware pools. The `model` field in the request body picks
+the pool — one base URL on both API paths.
 
-| Model name | Pool | Context limit | Notes |
-|------------|------|---------------|-------|
-| `qwen3.8-27b` | phase-1 (4 pods × TP=4, Ascend 910B) | 131,072 | the default |
-| `qwen3.8-27b-262k` | phase-2 (910B3, 64 GB HBM) | 262,144 | long-context work; off by default |
-| `qwen3.8-27b-131k` | phase-1 (alias) | 131,072 | **OpenAI path only** (404 on `/v1/messages`) |
+| Model name | Pool | Context |
+|------------|------|---------|
+| `qwen3.8-27b` | phase-1 (4 pods × TP=4, 910B) | 131,072 — default |
+| `qwen3.8-27b-262k` | phase-2 (910B3 64 GB HBM) | 262,144 — long context, off by default |
+| `qwen3.8-27b-131k` | phase-1 alias | 131,072 — OpenAI path only |
 
 ## Architecture
-
-### Overview
 
 ```mermaid
 flowchart TD
     subgraph CLIENTS["Clients (lab network)"]
-        OA["OpenAI SDK / curl / HTTP<br/>POST /v1/chat/completions"]
+        OA["OpenAI SDK / curl<br/>POST /v1/chat/completions"]
         AN["Claude Code / Anthropic SDK<br/>POST /v1/messages"]
         GUI["Open WebUI (30401), Swagger UI (30400)"]
     end
 
-    LT["LiteLLM proxy - litellm-proxy<br/>NodePort 30400 (only external port)<br/>master-key auth, model list, metrics"]
+    LT["LiteLLM proxy<br/>NodePort 30400 (only external port)"]
 
-    RT["kv-router - router-service (ClusterIP)<br/>:8080 + results ZMQ :5559<br/>model-aware routing, context guard,<br/>len-aware short_first policy"]
+    RT["kv-router (ClusterIP)<br/>:8080 + results ZMQ :5559<br/>model-aware routing, context guard"]
 
-    R[("Redis :6379<br/>queue state + discovery")]
+    R[("Redis :6379<br/>queue state")]
 
-    subgraph P1["Phase-1 pool - 131k context<br/>served as qwen3.8-27b"]
-        P1S["kv-sidecar (pull mode) :9000"]
-        P1V["vLLM x4 pods, TP=4 :8200<br/>2 pods per 8-NPU node"]
+    subgraph P1["Phase-1 pool · 131k<br/>qwen3.8-27b"]
+        P1S["kv-sidecar (pull) :9000"]
+        P1V["vLLM x4 pods, TP=4 :8200"]
         P1S --> P1V
     end
 
-    subgraph P2["Phase-2 pool - 262k context<br/>served as qwen3.8-27b-262k (when enabled)"]
-        P2S["kv-sidecar (pull mode) :9000"]
-        P2V["vLLM pods, TP=4 :8200<br/>910B3 64GB HBM nodes"]
+    subgraph P2["Phase-2 pool · 262k (when enabled)<br/>qwen3.8-27b-262k"]
+        P2S["kv-sidecar (pull) :9000"]
+        P2V["vLLM pods, TP=4 :8200"]
         P2S --> P2V
     end
 
-    MC["mooncake-master :50051 / :8080 / :9003<br/>cluster-wide KV-cache pool (128 GiB DRAM, phase-1 pods)"]
+    MC["mooncake-master :50051/:8080/:9003<br/>128 GiB shared KV-cache pool"]
 
-    OA -->|"POST /v1/chat/completions"| LT
-    AN -->|"POST /v1/messages"| LT
-    GUI -->|"OpenAI route"| LT
-    LT -->|"chat completions"| RT
-    LT -->|"Anthropic raw pass-through"| RT
-    RT <-->|"queue state"| R
+    OA -->|"chat completions"| LT
+    AN -->|"/v1/messages"| LT
+    GUI --> LT
+    LT -->|"via router"| RT
+    LT -->|"Anthropic pass-through"| RT
+    RT <--> R
     RT <-->|"/pull, /result_submit"| P1S
     RT <-->|"/pull, /result_submit"| P2S
-    P1V -.->|"KV-cache events ZMQ :5557"| RT
-    P2V -.->|"KV-cache events ZMQ :5557"| RT
-    P1V <-->|"put/get prefix blocks<br/>protocol = ascend"| MC
+    P1V -.->|"KV events ZMQ :5557"| RT
+    P2V -.->|"KV events ZMQ :5557"| RT
+    P1V <-->|"put/get prefix blocks"| MC
 ```
 
-Key properties:
-
-- **One external port.** LiteLLM (NodePort **30400**) is the only exposed
-  service; router, Redis, vLLM and Mooncake are ClusterIP-only (use
-  `kubectl port-forward` to poke them).
-- **Pull-based dispatch.** Each vLLM pod runs a `kv-sidecar` that polls the
-  router's `/pull` every 50 ms and posts finished work back via
-  `/result_submit`. The router keeps a central queue (state in Redis); busy
-  pods simply stop pulling.
-- **Two API paths, one gateway.** `/v1/chat/completions` (OpenAI) is routed
-  through the router; `/v1/messages` (Anthropic) is an authenticated
-  pass-through to the router's model-aware forward endpoint. vLLM speaks the
-  Anthropic Messages API natively — the request and (streaming) response are
-  forwarded verbatim, no protocol conversion anywhere.
-- **KV cache, three tiers.** ① local prefix cache inside each vLLM pod;
-  ② router KV-affinity — a request is steered to the pod that already holds
-  its prefix (the router learns this from per-pod KV-cache events over
-  ZMQ :5557); ③ the **Mooncake** store — a 128 GiB DRAM pool shared across
-  pods, so prefix blocks survive local eviction and cross-pod routing
-  (attached to phase-1 pods only).
-- **Context guard.** Requests that cannot fit the pool's context window are
-  rejected up front with a real **400** (`prompt is too long: N tokens > M
-  maximum`, vLLM's error shape) — so agent clients (Claude Code, pi) detect
-  overflow and auto-compact + continue instead of receiving a silent empty
-  reply.
-- **Per-pool limits are live.** Each vLLM endpoint declares its
-  `max_model_len` to the router; the context cap is never hard-coded.
-
-### Kubernetes topology
+- **One external port**: LiteLLM NodePort **30400**; everything else is
+  ClusterIP (`kubectl port-forward` to poke internals).
+- **Pull dispatch**: each vLLM pod's `kv-sidecar` polls `/pull` (50 ms) and
+  posts results back via `/result_submit`; queue state in Redis.
+- **Two API paths**: `/v1/chat/completions` is routed; `/v1/messages` is an
+  authenticated verbatim pass-through to the router's model-aware forward
+  (vLLM speaks the Anthropic Messages API natively).
+- **KV cache, 3 tiers**: local prefix cache → router KV-affinity (per-pod KV
+  events) → Mooncake 128 GiB DRAM pool shared across pods (phase-1 only).
+- **Context guard**: requests that can't fit the pool get a real 400
+  (`prompt is too long: …`) up front, so agent clients auto-compact.
 
 ```mermaid
 flowchart LR
-    subgraph K8S["Kubernetes cluster - namespace sir-llm-platform"]
+    subgraph K8S["namespace sir-llm-platform"]
         subgraph CP["Control-plane node (pinned)"]
             direction TB
-            LITELLM["litellm-proxy :4000<br/>NodePort 30400"]
-            ROUTER["kv-router :8080 / :5559"]
+            LITELLM["litellm-proxy<br/>NodePort 30400"]
+            ROUTER["kv-router :8080/:5559"]
             REDIS["redis :6379"]
-            MOON["mooncake-master<br/>:50051 / :8080 / :9003"]
+            MOON["mooncake-master<br/>:50051/:8080/:9003"]
         end
 
-        subgraph N1["Phase-1 NPU node 1<br/>llm-pool=qwen-38b-phase1<br/>8 x Ascend 910B"]
+        subgraph N1["Phase-1 node 1<br/>llm-pool=qwen-38b-phase1<br/>8 x 910B"]
             direction TB
-            PA["vllm pod A (4 NPUs)<br/>vllm :8200 + kv-sidecar :9000"]
-            PB["vllm pod B (4 NPUs)<br/>vllm :8200 + kv-sidecar :9000"]
+            PA["vllm pod A (4 NPUs)<br/>vllm + kv-sidecar"]
+            PB["vllm pod B (4 NPUs)"]
         end
 
-        subgraph N2["Phase-1 NPU node 2<br/>llm-pool=qwen-38b-phase1<br/>8 x Ascend 910B"]
+        subgraph N2["Phase-1 node 2<br/>8 x 910B"]
             direction TB
             PC["vllm pod C (4 NPUs)"]
             PD["vllm pod D (4 NPUs)"]
         end
 
-        subgraph N3["Phase-2 NPU nodes (when enabled)<br/>llm-pool=qwen-38b-phase2<br/>910B3 64GB HBM"]
-            P2["vllm-qwen3-8b-p2 pods (TP=4)<br/>no mooncake"]
+        subgraph N3["Phase-2 nodes (when enabled)<br/>910B3 64GB HBM"]
+            P2["vllm-qwen3-8b-p2 pods (TP=4)"]
         end
     end
 
     LITELLM --> ROUTER
     ROUTER <--> REDIS
-    ROUTER -.->|"pull results"| PA
-    ROUTER -.->|"pull results"| PB
-    ROUTER -.->|"pull results"| PC
-    ROUTER -.->|"pull results"| PD
-    ROUTER -.->|"pull results"| P2
-    PA <-->|"KV store segments"| MOON
-    PB <-->|"KV store segments"| MOON
-    PC <-->|"KV store segments"| MOON
-    PD <-->|"KV store segments"| MOON
+    ROUTER -.->|"pull"| PA
+    ROUTER -.->|"pull"| PB
+    ROUTER -.->|"pull"| PC
+    ROUTER -.->|"pull"| PD
+    ROUTER -.->|"pull"| P2
+    PA <-->|"segments"| MOON
+    PB <-->|"segments"| MOON
+    PC <-->|"segments"| MOON
+    PD <-->|"segments"| MOON
 ```
 
-- **NPU allocation:** each vLLM pod requests `huawei.com/Ascend910: 4`; the
-  Ascend device plugin gives each pod a disjoint set of 4 of the node's 8
-  NPUs, so two TP=4 pods per node never collide.
-- **Every vLLM pod is two containers:** `vllm` and `kv-sidecar`.
-- **Model weights** are a pre-staged read-only hostPath
-  (`/data/models/Qwen3.8-27B`) — nothing is downloaded at startup.
-- **Pinning:** LiteLLM, router, Redis and mooncake-master are pinned to one
-  node; vLLM pods are scheduled by the `llm-pool` node label.
-
-### Request flow (OpenAI path)
+Each vLLM pod is two containers (`vllm` + `kv-sidecar`) requesting 4 NPUs
+(`huawei.com/Ascend910: 4` — disjoint sets per pod via the device plugin).
+Weights are a pre-staged read-only hostPath (`/data/models/Qwen3.8-27B`);
+nothing is downloaded at startup.
 
 ```mermaid
 sequenceDiagram
@@ -158,77 +128,52 @@ sequenceDiagram
     participant S as kv-sidecar :9000
     participant V as vLLM :8200
 
-    C->>L: POST /v1/chat/completions (model, messages, max_tokens)
-    L->>L: master-key auth; model name resolution (alias rewrite)
-    L->>R: forward to router-service:8080/v1
-    R->>R: context guard: count prompt tokens
-    alt prompt + max_tokens > pool max_model_len
-        R-->>C: 400 "prompt is too long: N tokens > M maximum"
-    else request fits
-        R->>S: enqueue (sidecar polls /pull every 50ms)
-        S->>V: submit to local vLLM (127.0.0.1:8200)
-        V-->>S: streamed tokens (MTP speculative decoding)
-        S-->>R: post results (/result_submit)
-        R-->>C: SSE stream (via LiteLLM)
+    C->>L: POST /v1/chat/completions
+    L->>R: auth + forward
+    R->>R: context guard
+    alt too long
+        R-->>C: 400 prompt is too long
+    else fits
+        R->>S: enqueue (sidecar polls /pull)
+        S->>V: submit (127.0.0.1:8200)
+        V-->>S: streamed tokens (MTP)
+        S-->>R: /result_submit
+        R-->>C: SSE stream
     end
 ```
-
-The Anthropic path (`/v1/messages`) is the same chain minus routing: LiteLLM
-authenticates and forwards the body verbatim to the router, which looks the
-`model` field up in its upstream map and raw-streams to that pool's vLLM
-service.
 
 ### Components & ports
 
 | Service | Port(s) | Exposure | Role |
 |---------|---------|----------|------|
-| `litellm-proxy` | 4000 → **NodePort 30400** | external | API gateway (the only external port) |
-| `router-service` | 8080 (http), 5559 (results ZMQ) | ClusterIP | routing + results channel |
-| `redis` | 6379 | ClusterIP | router queue state |
-| `vllm-qwen3-8b` | 8200 | ClusterIP | vLLM OpenAI API (phase-1) |
-| `vllm-qwen3-8b-claude` | 8200 | ClusterIP | same pods; Anthropic-path upstream (unauthenticated, internal) |
+| `litellm-proxy` | 4000 → **NodePort 30400** | external | API gateway (only external port) |
+| `router-service` | 8080, 5559 (ZMQ) | ClusterIP | routing + results |
+| `redis` | 6379 | ClusterIP | queue state |
+| `vllm-qwen3-8b` | 8200 | ClusterIP | vLLM (phase-1) |
+| `vllm-qwen3-8b-claude` | 8200 | ClusterIP | Anthropic-path upstream (unauthenticated, internal) |
 | `vllm-qwen3-8b-p2` | 8200 | ClusterIP | phase-2 pool (when enabled) |
-| `mooncake-master` | 50051 (rpc), 8080 (metadata), 9003 (metrics) | ClusterIP | KV-store control plane |
+| `mooncake-master` | 50051, 8080, 9003 | ClusterIP | KV-store control plane |
 | `open-webui` | 3000 → **NodePort 30401** | external | chat GUI |
-| Prometheus | 9090 → **NodePort 30900** | external | metrics |
-| Grafana | 3000 → **NodePort 30300** | external | dashboards |
+| Prometheus / Grafana | **NodePort 30900 / 30300** | external | monitoring |
 
-### Mooncake KV-cache store
+### Mooncake
 
-- **master** (`mooncake-master`, 1 replica, pinned): owns the object index and
-  segment metadata. **In-memory and stateless** — restarting it discards all
-  registrations and keys. If it ever needs restarting: master **first**, then
-  `kubectl rollout restart deployment/vllm-qwen3-8b` (stale segment
-  registrations have no TTL and pod-IP reuse can shadow a live process).
-- **Embedded segments:** with `mooncake.attachToVllm=true`, every vLLM TP rank
-  in the phase-1 pool registers 8 GiB of node DRAM → **8 GiB × 4 ranks ×
-  4 pods = 128 GiB**. Phase-2 pods are deliberately mooncake-free.
-- **Transport:** must be `protocol: "ascend"` (the NPU-fabric transport) with
-  the `AscendStoreConnector` on this vllm-ascend image. The generic `tcp`
-  path is broken on this image (registration works, every put fails).
-- **Health:** `master_active_clients` = 16 (4 pods × 4 ranks);
-  `master_batch_put_end` should track `master_batch_put_start` (if
-  `revoke ≈ start`, the data path is failing); vLLM log
-  `External prefix cache hit rate` should be > 0 under shared-prefix load.
+- `mooncake-master` holds object index + segment metadata; **in-memory and
+  stateless** — restart the master **first**, then roll the vLLM pods.
+- Segments: 8 GiB × 4 TP ranks × 4 pods = **128 GiB** (phase-1 only; phase-2
+  is deliberately mooncake-free).
+- Must run `protocol: "ascend"` + `AscendStoreConnector` on this image (the
+  generic `tcp` path registers fine but every put fails).
+- Health: `master_active_clients` = 16; `master_batch_put_end` tracks
+  `master_batch_put_start`.
 
 ## Quick setup
 
-Assumes cluster admin access. For *using* the platform, skip to
-[Quick user guide](#quick-user-guide).
-
-### Prerequisites
-
-- `kubectl` + Helm 3.x configured against the cluster
-- Nodes:
-  - control plane: any schedulable node (pinned by hostname in the chart values)
-  - phase-1: 2 nodes labeled `llm-pool=qwen-38b-phase1`, 8 × Ascend 910B each
-  - phase-2 (optional): nodes labeled `llm-pool=qwen-38b-phase2` (910B3 64 GB HBM)
-- The Ascend NPU device plugin running (pods request `huawei.com/Ascend910`)
-- Model weights pre-staged on every vLLM node at `/data/models/Qwen3.8-27B/`
-- Image egress: `kv-router`/`kv-sidecar`/`npu-exporter` come from
-  `ghcr.io/clyde-org/llm-la-icbc`. If a node cannot pull from ghcr.io (egress
-  MITM gateway), add the gateway CA to containerd first:
-  `mkdir -p /etc/containerd/certs.d/ghcr.io && cp /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/containerd/certs.d/ghcr.io/ca.crt`
+Prereqs: `kubectl` + Helm 3.x; 2 nodes labeled `llm-pool=qwen-38b-phase1`
+(8 × 910B each); optional phase-2 nodes `llm-pool=qwen-38b-phase2`; Ascend
+device plugin; weights pre-staged at `/data/models/Qwen3.8-27B/` on all vLLM
+nodes. If a node can't pull from ghcr.io (egress MITM), add the CA first:
+`cp /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/containerd/certs.d/ghcr.io/ca.crt`.
 
 ### 1. Serving stack
 
@@ -238,157 +183,79 @@ helm upgrade --install vllm ./vllm-stack \
   --set mooncake.enabled=true --set mooncake.attachToVllm=true
 ```
 
-Everything else is chart default (`vllm-stack/values.yaml` reproduces the live
-deployment); the **only** live overrides are the two `mooncake` flags, which
-deploy the store master and attach the store connector to the vLLM pods.
-Creates, in namespace `sir-llm-platform`:
-
-| Resource | Kind | Notes |
-|----------|------|-------|
-| `model-registry`, `litellm-config`, `mooncake-store-config` | ConfigMaps | router registry + gateway + store config |
-| `redis` | Deployment + Service | ClusterIP :6379, pinned |
-| `router-service` | Deployment + Service + RBAC | ClusterIP :8080/:5559, pinned |
-| `vllm-qwen3-8b` | Deployment (×4) + Service | phase-1 pods (vllm + kv-sidecar) |
-| `litellm-proxy` | Deployment + Service | NodePort 30400, pinned |
-| `vllm-qwen3-8b-claude` | Service | ClusterIP view of phase-1 pods (Anthropic upstream) |
-| `mooncake-master` | Deployment + Service | :50051/:8080/:9003, pinned |
+Chart defaults reproduce the live deployment; the two `mooncake` flags are the
+only live overrides. Creates (ns `sir-llm-platform`): `redis`,
+`router-service`, `vllm-qwen3-8b` (×4), `litellm-proxy` (NodePort 30400),
+`vllm-qwen3-8b-claude`, `mooncake-master` + their ConfigMaps.
 
 ### 2. Monitoring
 
 ```bash
-# Prometheus + Grafana (kube-prometheus-stack), namespace monitoring
 helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
-  -n monitoring --create-namespace \
-  -f monitoring/prometheus/values.yaml
-
-# NPU exporter DaemonSet, namespace npu-exporter
+  -n monitoring --create-namespace -f monitoring/prometheus/values.yaml
 kubectl apply -f monitoring/npu-exporter.yaml
-
-# Scrape monitors + litellm bearer secret, namespace monitoring
 kubectl apply -f monitoring/servicemonitors.yaml
-
-# Pre-provisioned dashboard (Grafana persistence is off; the ConfigMap is the source of truth)
 kubectl apply -f monitoring/dashboards/sir-llm-platform-vllm-configmap.yaml
 ```
-
-See [monitoring/README.md](monitoring/README.md) for the metric reference.
 
 ### 3. Chat GUI (optional)
 
 ```bash
-kubectl apply -f deepseek-harness/open-webui.yaml
-kubectl rollout status deploy/open-webui -n sir-llm-platform
+kubectl apply -f deepseek-harness/open-webui.yaml   # → NodePort 30401, first account = admin
 ```
 
-NodePort **30401**; first registered account becomes admin. Uses `emptyDir`
-(pod recreation resets the admin account and history).
+### First boot & verification
 
-### First boot
-
-```mermaid
-flowchart LR
-    A["helm install"] --> B["redis + kv-router +<br/>litellm-proxy ready<br/>(gateway answers; no model yet)"]
-    B --> C["mooncake-master ready<br/>(no segments yet)"]
-    C --> D["vLLM pods: weights from hostPath<br/>+ NPU engine init<br/>⏳ slowest stage — startup probe<br/>allows up to ~6 h"]
-    D --> E["kv-sidecars pull from router;<br/>vLLM pods Ready"]
-    E --> F["mooncake segments register<br/>(master_active_clients → 16)"]
-    F --> G["verification (below)"]
-```
-
-vLLM model loading on NPUs is slow — a long `Running` window before Ready is
-normal; watch `kubectl logs` rather than the pod status.
-
-### Verification
+vLLM model load on NPUs is slow (startup probe allows ~6 h) — a long `Running`
+window before Ready is normal. Once all 4 phase-1 pods are Ready:
 
 ```bash
-# gateway health
-curl -s -H "Authorization: Bearer sk-qwen38b-local" http://<NODE_IP>:30400/health
-
-# smoke test - OpenAI path
+# smoke test (expect PONG)
 curl -s -X POST http://<NODE_IP>:30400/v1/chat/completions \
   -H "Content-Type: application/json" -H "Authorization: Bearer sk-qwen38b-local" \
   -d '{"model": "qwen3.8-27b", "messages": [{"role": "user", "content": "Reply with PONG"}], "max_tokens": 32}'
 
-# smoke test - Anthropic path
-curl -s -X POST http://<NODE_IP>:30400/v1/messages \
-  -H "Content-Type: application/json" -H "x-api-key: sk-qwen38b-local" \
-  -H "anthropic-version: 2023-06-01" \
-  -d '{"model": "qwen3.8-27b", "max_tokens": 32, "messages": [{"role": "user", "content": "Reply with PONG"}]}'
-
-# model list (shows both pools when phase-2 is enabled)
+# model list
 curl -s -H "Authorization: Bearer sk-qwen38b-local" http://<NODE_IP>:30400/v1/models
 
-# mooncake: expect 16 active clients (4 pods x 4 TP ranks)
+# mooncake: expect 16 clients (4 pods x 4 TP ranks)
 curl -s "http://<NODE_IP>:30900/api/v1/query?query=master_active_clients"
+
+# overflow contract test (both pools, both paths; stdlib-only)
+python3 scripts/test-ctx-guard.py
 ```
 
-Client contract test (overflow behaviour, both pools, both paths; stdlib-only):
+### Phase-2 rollout (optional)
+
+Helm values are **replaced, not merged** — re-pass the mooncake flags on every
+upgrade. Validate with one pod first (`--set phase2.pinnedNode=node3`, no
+replicas/maxModelLen), then:
 
 ```bash
-python3 scripts/test-ctx-guard.py             # all checks
-CTX_TEST_SKIP_SLOW=1 python3 scripts/test-ctx-guard.py   # skip the ~115k-token prefill
+helm upgrade vllm ./vllm-stack -n sir-llm-platform \
+  --set mooncake.enabled=true --set mooncake.attachToVllm=true \
+  --set phase2.enabled=true --set phase2.replicas=4 --set phase2.maxModelLen=262144
 ```
 
-### Phase-2 rollout (262k pool, optional)
-
-Additive and off by default. Roll out in three steps — **Helm values are
-replaced, not merged, so re-pass the mooncake flags on every upgrade**:
-
-```bash
-# 1. single-pod validation
-helm upgrade vllm ./vllm-stack -n sir-llm-platform \
-  --set mooncake.enabled=true --set mooncake.attachToVllm=true \
-  --set phase2.enabled=true --set phase2.pinnedNode=node3
-
-# 2. two pods per node
-helm upgrade vllm ./vllm-stack -n sir-llm-platform \
-  --set mooncake.enabled=true --set mooncake.attachToVllm=true \
-  --set phase2.enabled=true --set phase2.replicas=4
-
-# 3. raise the context limit to 262k
-helm upgrade vllm ./vllm-stack -n sir-llm-platform \
-  --set mooncake.enabled=true --set mooncake.attachToVllm=true \
-  --set phase2.enabled=true --set phase2.replicas=4 \
-  --set phase2.maxModelLen=262144
-```
-
-Phase-2 pods are served under `qwen3.8-27b-262k`, are deliberately
-**mooncake-free**, and join the same router/sidecar machinery (discovered via
-the shared `component=vllm` label).
+Phase-2 pods serve `qwen3.8-27b-262k`, are mooncake-free, and join the same
+router/sidecar machinery automatically.
 
 ### Day-2 operations
 
 ```bash
-# upgrade (capture current overrides first, re-apply them + new flags)
-helm get values vllm -n sir-llm-platform
-helm upgrade vllm ./vllm-stack -n sir-llm-platform \
-  --set mooncake.enabled=true --set mooncake.attachToVllm=true
-helm history vllm -n sir-llm-platform
-
-# restart / scale
-kubectl rollout restart deployment/litellm-proxy -n sir-llm-platform
-kubectl rollout restart deployment/router-service -n sir-llm-platform
-kubectl rollout restart deployment/vllm-qwen3-8b -n sir-llm-platform   # rolling; slow (model load)
+helm get values vllm -n sir-llm-platform   # before upgrading: re-apply these + new flags
+kubectl rollout restart deployment/vllm-qwen3-8b -n sir-llm-platform   # slow (model load)
 kubectl scale deployment/vllm-qwen3-8b -n sir-llm-platform --replicas=4
-
-# logs (a vLLM pod has two containers)
 kubectl logs -n sir-llm-platform -l app=vllm-qwen3-8b --tail=100
 kubectl logs -n sir-llm-platform <pod> -c kv-sidecar --tail=100
-
-# reach internal services from a workstation
-kubectl -n sir-llm-platform port-forward svc/router-service 8080:8080
-kubectl -n sir-llm-platform port-forward svc/redis 6379:6379
-kubectl -n sir-llm-platform port-forward svc/vllm-qwen3-8b 8200:8200
+kubectl -n sir-llm-platform port-forward svc/router-service 8080:8080   # also: redis, vllm-qwen3-8b, mooncake-master
 ```
 
-- **Router/sidecar images are pinned by tag** (`values.yaml`:
-  `router.imageTag` / `sidecar.imageTag`) and must be **rolled together** —
-  they share a wire contract. Never `:latest`.
-- `vllm-stack/values/` contains stale files from an older chart schema — do
-  not use them.
+- Router/sidecar images are tag-pinned and **roll together** (shared wire contract).
 - Rollback: `helm rollback vllm <rev> -n sir-llm-platform`, or detach mooncake
   (`--set mooncake.attachToVllm=false`), or disable phase-2
   (`--set phase2.enabled=false`).
+- `vllm-stack/values/` holds stale files from an older schema — don't use them.
 
 ## Quick user guide
 
@@ -396,71 +263,19 @@ kubectl -n sir-llm-platform port-forward svc/vllm-qwen3-8b 8200:8200
 
 | What | Value |
 |------|-------|
-| Gateway base URL | `http://<NODE_IP>:30400` (any reachable node, e.g. `7.242.101.107`) |
+| Base URL | `http://<NODE_IP>:30400` (any node, e.g. `7.242.101.107`) |
 | API key | `sk-qwen38b-local` (LiteLLM master key — **not** an Anthropic key) |
-| OpenAI path | `POST /v1/chat/completions`, header `Authorization: Bearer <key>` |
-| Anthropic path | `POST /v1/messages`, headers `x-api-key: <key>` + `anthropic-version: 2023-06-01` |
+| OpenAI path | `POST /v1/chat/completions` + `Authorization: Bearer <key>` |
+| Anthropic path | `POST /v1/messages` + `x-api-key: <key>` + `anthropic-version: 2023-06-01` |
 
-### Your first call
+Standard `openai` / `anthropic` SDKs work as-is (`base_url=…:30400/v1` and
+`…:30400` respectively). Streaming, tool calling and reasoning parsing are
+enabled.
 
-```bash
-curl -s -X POST http://<NODE_IP>:30400/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-qwen38b-local" \
-  -d '{
-    "model": "qwen3.8-27b",
-    "messages": [{"role": "user", "content": "Hello"}],
-    "max_tokens": 100
-  }'
-```
-
-Python (official `openai` package):
-
-```python
-from openai import OpenAI
-
-client = OpenAI(base_url="http://7.242.101.107:30400/v1", api_key="sk-qwen38b-local")
-resp = client.chat.completions.create(
-    model="qwen3.8-27b",
-    messages=[{"role": "user", "content": "Hello"}],
-    max_tokens=100,
-)
-print(resp.choices[0].message.content)
-```
-
-Anthropic path (official `anthropic` package works as-is):
-
-```python
-from anthropic import Anthropic
-
-client = Anthropic(base_url="http://7.242.101.107:30400", api_key="sk-qwen38b-local")
-msg = client.messages.create(
-    model="qwen3.8-27b",
-    max_tokens=100,
-    messages=[{"role": "user", "content": "Hello"}],
-)
-print(msg.content[0].text)
-```
-
-Streaming (`stream=True`) works on both paths. Tool calling is enabled
-(`qwen3_coder` parser) and reasoning parsing is active — the model can think
-before answering.
-
-### Choosing a pool
-
-```mermaid
-flowchart TD
-    Q{"What does the task need?"}
-    Q -->|"day-to-day work<br/>(chat, coding agents, batch)"| P1["qwen3.8-27b<br/>phase-1 · 131k context (default)"]
-    Q -->|"very long context<br/>(huge docs, > ~120k tokens)"| P2["qwen3.8-27b-262k<br/>phase-2 · 262k context"]
-    Q -->|"legacy alias, OpenAI path only"| P3["qwen3.8-27b-131k<br/>= qwen3.8-27b"]
-```
-
-Just set the `model` field. Rules of thumb: keep `max_tokens` ≤ 8192; if a
-request overflows the pool, the gateway returns a real **400**
-(`prompt is too long: …`) — agent clients handle this by auto-compacting. A
-session already past the limit can't be compacted back under it: start a fresh
-one (`/clear` in Claude Code).
+Pick a pool by setting the `model` field. On overflow the gateway returns a
+real 400 (`prompt is too long: …`) which agent clients handle by
+auto-compacting; a session already past the limit needs a fresh start
+(`/clear` in Claude Code).
 
 ### Coding agents
 
@@ -469,93 +284,58 @@ one (`/clear` in Claude Code).
 | **Claude Code** | `/v1/messages` | `cp claude-code/settings.qwen3-8b.json ~/.claude/settings.json` | [claude-code/README.md](claude-code/README.md) |
 | **pi** | `/v1/chat/completions` | `cp pi/models.json pi/settings.json ~/.pi/agent/` | [pi/README.md](pi/README.md) |
 
-Both templates are pre-tuned for the 131k pool (autocompact / compaction
-triggers set well under the hard limit) — don't use stock client defaults,
-they assume 200k context and long sessions will 500.
+Templates are pre-tuned for the 131k pool — don't use stock client context
+settings (they assume 200k and long sessions 500).
 
-### Chat GUIs & CLI
+### Chat GUIs
 
-| Option | Where | Notes |
-|--------|-------|-------|
-| **Open WebUI** | `http://<NODE_IP>:30401` | already deployed; first account = admin |
-| **LiteLLM Swagger UI** | `http://<NODE_IP>:30400/` | API playground, zero install |
-| **deepseek-chat** | `cd deepseek-harness && ./deepseek-chat` | stdlib-only Python REPL, preconfigured |
-| LibreChat / NextChat / AnythingLLM / LM Studio | self-host / desktop | any OpenAI-compatible client: base URL `http://<NODE_IP>:30400/v1`, key `sk-qwen38b-local` |
-
-More GUI options: [deepseek-harness/README.md](deepseek-harness/README.md).
+- **Open WebUI**: `http://<NODE_IP>:30401` (already deployed; first account = admin)
+- **Swagger UI**: `http://<NODE_IP>:30400/` (API playground)
+- **deepseek-chat**: `cd deepseek-harness && ./deepseek-chat` (stdlib-only REPL)
+- Any other OpenAI-compatible client: base `http://<NODE_IP>:30400/v1`, key `sk-qwen38b-local`
 
 ### Monitoring
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Prometheus | `http://<NODE_IP>:30900` | — |
-| Grafana | `http://<NODE_IP>:30300` | `admin` / `prometheus-admin` |
-| Platform dashboard | `http://<NODE_IP>:30300/d/sir-llm-platform-vllm` | rows: Gateway, Router/SLO, load balancing, cache & speculative decoding, reliability, NPU hardware |
+Prometheus `http://<NODE_IP>:30900` · Grafana `http://<NODE_IP>:30300`
+(`admin` / `prometheus-admin`) · dashboard
+`http://<NODE_IP>:30300/d/sir-llm-platform-vllm`. Metric reference and PromQL:
+[monitoring/README.md](monitoring/README.md).
 
-Useful PromQL:
+## Troubleshooting
 
-```promql
-rate(vllm:request_success_total[5m])                                # request rate
-vllm:kv_cache_usage_perc                                           # KV cache pressure
-router_central_queue_length                                        # router queue depth
-histogram_quantile(0.95, rate(router_request_e2e_seconds_bucket[5m]))  # P95 E2E
-master_allocated_bytes / master_total_capacity_bytes               # Mooncake pool fill
-npu_chip_info_hbm_used_memory / npu_chip_info_hbm_total_memory     # HBM usage
-```
+| Symptom | Fix |
+|---------|-----|
+| 401 from gateway | auth header: `Authorization: Bearer sk-qwen38b-local` (or `x-api-key` on `/v1/messages`) |
+| vLLM pods slow to Ready | normal — NPU model load; probe allows ~6 h |
+| Claude Code: 500 `maximum context length is 131072` | session too long → `/clear`; [claude-code/README.md](claude-code/README.md) |
+| Agent stalls with empty replies on long context | `python3 scripts/test-ctx-guard.py` — expect real 400s, not fake 200s |
+| `/v1/messages` 404 for `qwen3.8-27b-131k` | alias is OpenAI-path only — use `qwen3.8-27b` |
+| vLLM crash loop: `Address already in use` / Mooncake init failed | keep `mooncake.legacyRpcPortBinding: false` |
+| Mooncake: `put_end ≈ 0` / external hit rate 0.0% | needs `AscendStoreConnector` + `protocol: "ascend"` |
+| Stale mooncake segments after restarts | restart mooncake-master **first**, then roll vLLM pods |
+| LiteLLM config change didn't apply | `kubectl rollout restart deployment/litellm-proxy` |
+| New node can't pull from ghcr.io | add egress CA — see [Quick setup](#quick-setup) |
 
-## Troubleshooting quick reference
+## Security
 
-| Symptom | First check | Fix / notes |
-|---------|-------------|-------------|
-| 401 from the gateway | auth header | `Authorization: Bearer sk-qwen38b-local` (or `x-api-key` on `/v1/messages`) |
-| vLLM pods take a long time to become Ready | `kubectl logs … -c vllm --tail=50` | normal — model load on NPU; startup probe allows ~6 h |
-| Claude Code: `500 … maximum context length is 131072` | session too long | autocompact misfire class — fresh session (`/clear`); see [claude-code/README.md](claude-code/README.md) |
-| Agent stalls with empty replies on long context | overflow handling | run `python3 scripts/test-ctx-guard.py`; expect real 400s, not fake 200s |
-| `/v1/messages` 404 for `qwen3.8-27b-131k` | model name | alias is OpenAI-path only; use `qwen3.8-27b` on the Anthropic path |
-| vLLM pod crash-loops: `Address already in use` / `Initialize MooncakeDistributedStore failed` | mooncake env | keep `mooncake.legacyRpcPortBinding: false` (auto ports + legacy mode = guaranteed EADDRINUSE) |
-| Mooncake: segments registered but `put_end ≈ 0` / `External prefix cache hit rate: 0.0%` | connector/protocol | must be `AscendStoreConnector` + `protocol: "ascend"` on this image; `tcp` is the broken path |
-| Stale mooncake segments after pod restarts | restart order | restart **mooncake-master first**, then `kubectl rollout restart deployment/vllm-qwen3-8b` |
-| Router crash-loops | router logs | historical cause: missing tokenizer deps — it runs `KV_AWARE=false`; don't re-enable without the deps |
-| LiteLLM config change didn't take effect | pod template | the `checksum/litellm-config` annotation should trigger a rollout; force with `kubectl rollout restart deployment/litellm-proxy` |
-| New node can't pull images from ghcr.io | registry CA | `cp /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/containerd/certs.d/ghcr.io/ca.crt` |
-| Need to poke router/redis/vLLM directly | not exposed | `kubectl port-forward` — recipes in [Day-2 operations](#day-2-operations) |
-
-## Security notes
-
-- The gateway is protected **only** by the static master key
-  `sk-qwen38b-local` on the lab network — anyone who knows it can call the
-  model. The key is committed throughout this repo; treat the repo as
-  lab-internal. Add a gateway/OAuth proxy in front if the platform ever leaves
-  the lab.
-- The `-claude` Service and the router's Redis have no auth; both are
-  ClusterIP-only (reachable from inside the cluster or via port-forward).
+- Gateway auth is the static key `sk-qwen38b-local` on the lab network only —
+  treat the repo as lab-internal; put a real gateway in front before it
+  leaves the lab.
+- The `-claude` Service and Redis have no auth; both are ClusterIP-only.
 
 ## Repository structure
 
 ```
 sir-llm-platform/
 ├── README.md                        # ← this documentation
-├── vllm-stack/                      # Helm chart (the whole serving stack)
+├── vllm-stack/                      # Helm chart (whole serving stack)
 │   ├── values.yaml                  # defaults reproduce the live deployment
-│   └── templates/
-│       ├── 01-configmap.yaml        # model-registry + litellm-config
-│       ├── 02-redis.yaml
-│       ├── 03-router.yaml
-│       ├── 04-vllm.yaml             # phase-1 vLLM pods (+ kv-sidecar)
-│       ├── 05-litellm.yaml
-│       ├── 06-claude-service.yaml
-│       ├── 07-podmonitors.yaml
-│       ├── 08-mooncake.yaml
-│       ├── 09-vllm-phase2.yaml      # phase-2 (262k) pool, off by default
-│       └── _helpers.tpl
-├── monitoring/                      # README + Prometheus values, NPU exporter, monitors, dashboards
-├── claude-code/                     # README + Claude Code settings template
-├── pi/                              # README + pi models.json / settings.json templates
-├── deepseek-harness/                # README + minimal chat CLI + Open WebUI manifest
-└── scripts/
-    └── test-ctx-guard.py            # client-side overflow contract test
+│   └── templates/                   # 01-configmap … 09-vllm-phase2
+├── monitoring/                      # Prometheus values, NPU exporter, monitors, dashboards
+├── claude-code/                     # Claude Code settings template
+├── pi/                              # pi models.json / settings.json templates
+├── deepseek-harness/                # minimal chat CLI + Open WebUI manifest
+└── scripts/test-ctx-guard.py        # overflow contract test
 ```
 
-## License
-
-Internal use only - Clyde Org
+Internal use only — Clyde Org
