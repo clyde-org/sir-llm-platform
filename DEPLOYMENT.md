@@ -533,6 +533,21 @@ and continue.
   the guard (estimation miss) are propagated as `result["error"]` and surfaced
   as real error responses instead of error text masquerading as model output.
 
+**Verifying the context guard** (client-side, stdlib-only — any user can run):
+
+```bash
+python3 scripts/test-ctx-guard.py
+# CTX_TEST_URL / CTX_TEST_API_KEY / CTX_TEST_MODEL_131K / CTX_TEST_MODEL_262K
+# / CTX_TEST_CAP_131K / CTX_TEST_CAP_262K override defaults
+# CTX_TEST_SKIP_SLOW=1 skips the near-cap test (runs a real ~115k-token prefill)
+```
+
+It checks the full client contract: 400 + vLLM-shaped message for over-context
+requests on both pools (streaming and non-streaming), oversized `max_tokens`
+negative, normal requests still returning 200, a near-cap request NOT being
+false-rejected, and the Anthropic path (`/v1/messages`, Claude Code) returning
+its descriptive `maximum context length` error.
+
 ### Why KV-Aware is Disabled
 
 `KV_AWARE` is off by choice for this single-model stack (`LEN_AWARE` short-first
