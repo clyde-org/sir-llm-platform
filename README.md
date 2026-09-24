@@ -2,21 +2,7 @@
 
 Self-hosted LLM serving: **Qwen3.8-27B** on **Huawei Ascend 910B NPUs** —
 **vLLM** + KV-aware router + **LiteLLM** gateway, Mooncake KV-cache store,
-Prometheus/Grafana monitoring. Client how-tos:
-[claude-code](claude-code/README.md) · [pi](pi/README.md) ·
-[deepseek-harness](deepseek-harness/README.md) ·
-[monitoring](monitoring/README.md).
-
-## Models & pools
-
-Same weights, two hardware pools. The `model` field in the request body picks
-the pool — one base URL on both API paths.
-
-| Model name | Pool | Context |
-|------------|------|---------|
-| `qwen3.8-27b` | phase-1 (4 pods × TP=4, 910B) | 131,072 — default |
-| `qwen3.8-27b-262k` | phase-2 (910B3 64 GB HBM) | 262,144 — long context, off by default |
-| `qwen3.8-27b-131k` | phase-1 alias | 131,072 — OpenAI path only |
+Prometheus/Grafana monitoring.
 
 ## Architecture
 
@@ -167,175 +153,132 @@ sequenceDiagram
 - Health: `master_active_clients` = 16; `master_batch_put_end` tracks
   `master_batch_put_start`.
 
-## Quick setup
+## Quick start
 
-Prereqs: `kubectl` + Helm 3.x; 2 nodes labeled `llm-pool=qwen-38b-phase1`
-(8 × 910B each); optional phase-2 nodes `llm-pool=qwen-38b-phase2`; Ascend
-device plugin; weights pre-staged at `/data/models/Qwen3.8-27B/` on all vLLM
-nodes. If a node can't pull from ghcr.io (egress MITM), add the CA first:
-`cp /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/containerd/certs.d/ghcr.io/ca.crt`.
+One base URL for everything: **`http://<NODE_IP>:30400`** (e.g.
+`7.242.101.107`) with the shared lab key **`sk-qwen38b-local`**. Pick a pool
+via the `model` field: `qwen3.8-27b` (131k, default) or
+`qwen3.8-27b-262k` (262k, long context). Standard `openai` / `anthropic`
+SDKs work as-is (`base_url=…:30400/v1` and `…:30400` respectively).
 
-### 1. Serving stack
+### Claude Code
 
-```bash
-helm upgrade --install vllm ./vllm-stack \
-  -n sir-llm-platform --create-namespace \
-  --set mooncake.enabled=true --set mooncake.attachToVllm=true
-```
-
-Chart defaults reproduce the live deployment; the two `mooncake` flags are the
-only live overrides. Creates (ns `sir-llm-platform`): `redis`,
-`router-service`, `vllm-qwen3-8b` (×4), `litellm-proxy` (NodePort 30400),
-`vllm-qwen3-8b-claude`, `mooncake-master` + their ConfigMaps.
-
-### 2. Monitoring
+Claude Code uses the Anthropic path (`/v1/messages`):
 
 ```bash
-helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
-  -n monitoring --create-namespace -f monitoring/prometheus/values.yaml
-kubectl apply -f monitoring/npu-exporter.yaml
-kubectl apply -f monitoring/servicemonitors.yaml
-kubectl apply -f monitoring/dashboards/sir-llm-platform-vllm-configmap.yaml
+cp claude-code/settings.qwen3-8b.json ~/.claude/settings.json   # back up first if needed
+claude -p "Reply with PONG"                                     # verify
 ```
 
-### 3. Chat GUI (optional)
+Exact `~/.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "DISABLE_TELEMETRY": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "MCP_TIMEOUT": "60000",
+    "ANTHROPIC_API_KEY": "sk-qwen38b-local",
+    "ANTHROPIC_BASE_URL": "http://7.242.101.107:30400",
+    "ANTHROPIC_MODEL": "qwen3.8-27b",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-27b",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b-262k",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3.8-27b",
+    "ANTHROPIC_SMALL_FAST_MODEL": "qwen3.8-27b",
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "131072",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192",
+    "HTTP_PROXY": "http://127.0.0.1:3128",
+    "HTTPS_PROXY": "http://127.0.0.1:3128",
+    "http_proxy": "http://127.0.0.1:3128",
+    "https_proxy": "http://127.0.0.1:3128",
+    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com,7.242.101.107"
+  },
+  "model": "qwen3.8-27b",
+  "enabledPlugins": {
+    "cc-demo-plugin@rtos-cc-marketplace": true
+  },
+  "outputStyle": "engineer-professional",
+  "skipWebFetchPreflight": true,
+  "theme": "dark"
+}
+```
+
+- **`CLAUDE_CODE_AUTO_COMPACT_WINDOW` is required** — without it Claude Code
+  assumes a 200k window and long sessions die with
+  `500 … maximum context length is 131072`. On the 262k pool raise it to
+  `240000` (env is read at session start).
+- The Sonnet tier is pointed at the 262k pool for long-context work;
+  everything else stays on 131k.
+- The `*_PROXY` lines and `enabledPlugins` are workstation-specific — drop
+  them if your machine reaches the cluster directly.
+
+### pi
+
+pi uses the OpenAI path (`/v1/chat/completions`):
 
 ```bash
-kubectl apply -f deepseek-harness/open-webui.yaml   # → NodePort 30401, first account = admin
+mkdir -p ~/.pi/agent
+cp pi/models.json    ~/.pi/agent/models.json   # merge the "sirlab" entry if the file already has providers
+cp pi/settings.json  ~/.pi/agent/settings.json
+pi --list-models qwen      # should list sirlab / qwen3.8-27b
+pi -p "Reply with PONG"    # verify
 ```
 
-### First boot & verification
+Exact `~/.pi/agent/models.json`:
 
-vLLM model load on NPUs is slow (startup probe allows ~6 h) — a long `Running`
-window before Ready is normal. Once all 4 phase-1 pods are Ready:
-
-```bash
-# smoke test (expect PONG)
-curl -s -X POST http://<NODE_IP>:30400/v1/chat/completions \
-  -H "Content-Type: application/json" -H "Authorization: Bearer sk-qwen38b-local" \
-  -d '{"model": "qwen3.8-27b", "messages": [{"role": "user", "content": "Reply with PONG"}], "max_tokens": 32}'
-
-# model list
-curl -s -H "Authorization: Bearer sk-qwen38b-local" http://<NODE_IP>:30400/v1/models
-
-# mooncake: expect 16 clients (4 pods x 4 TP ranks)
-curl -s "http://<NODE_IP>:30900/api/v1/query?query=master_active_clients"
-
-# overflow contract test (both pools, both paths; stdlib-only)
-python3 scripts/test-ctx-guard.py
+```json
+{
+  "providers": {
+    "sirlab": {
+      "baseUrl": "http://7.242.101.107:30400/v1",
+      "api": "openai-completions",
+      "apiKey": "sk-qwen38b-local",
+      "compat": {
+        "supportsReasoningEffort": false,
+        "thinkingFormat": "qwen-chat-template"
+      },
+      "models": [
+        {
+          "id": "qwen3.8-27b",
+          "name": "Qwen3.8 27B",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 131072,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}
 ```
 
-### Phase-2 rollout (optional)
+Exact `~/.pi/agent/settings.json`:
 
-Helm values are **replaced, not merged** — re-pass the mooncake flags on every
-upgrade. Validate with one pod first (`--set phase2.pinnedNode=node3`, no
-replicas/maxModelLen), then:
-
-```bash
-helm upgrade vllm ./vllm-stack -n sir-llm-platform \
-  --set mooncake.enabled=true --set mooncake.attachToVllm=true \
-  --set phase2.enabled=true --set phase2.replicas=4 --set phase2.maxModelLen=262144
+```json
+{
+  "defaultProvider": "sirlab",
+  "defaultModel": "qwen3.8-27b",
+  "enableInstallTelemetry": false,
+  "theme": "dark",
+  "quietStartup": true,
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 32768,
+    "keepRecentTokens": 20000
+  }
+}
 ```
 
-Phase-2 pods serve `qwen3.8-27b-262k`, are mooncake-free, and join the same
-router/sidecar machinery automatically.
+- **Don't raise `maxTokens: 8192`** — pi's input wall is
+  `contextWindow − maxTokens`; stock values shrink it to ~33k and long
+  sessions die there.
+- The compaction settings trigger at ~98k tokens, so sessions run to ~122k
+  input and compact cleanly instead of failing with `prompt is too long`.
+- `models.json` is reloaded when you open `/model` in a session — live-edit
+  without restart.
 
-### Day-2 operations
-
-```bash
-helm get values vllm -n sir-llm-platform   # before upgrading: re-apply these + new flags
-kubectl rollout restart deployment/vllm-qwen3-8b -n sir-llm-platform   # slow (model load)
-kubectl scale deployment/vllm-qwen3-8b -n sir-llm-platform --replicas=4
-kubectl logs -n sir-llm-platform -l app=vllm-qwen3-8b --tail=100
-kubectl logs -n sir-llm-platform <pod> -c kv-sidecar --tail=100
-kubectl -n sir-llm-platform port-forward svc/router-service 8080:8080   # also: redis, vllm-qwen3-8b, mooncake-master
-```
-
-- Router/sidecar images are tag-pinned and **roll together** (shared wire contract).
-- Rollback: `helm rollback vllm <rev> -n sir-llm-platform`, or detach mooncake
-  (`--set mooncake.attachToVllm=false`), or disable phase-2
-  (`--set phase2.enabled=false`).
-- `vllm-stack/values/` holds stale files from an older schema — don't use them.
-
-## Quick user guide
-
-### Access
-
-| What | Value |
-|------|-------|
-| Base URL | `http://<NODE_IP>:30400` (any node, e.g. `7.242.101.107`) |
-| API key | `sk-qwen38b-local` (LiteLLM master key — **not** an Anthropic key) |
-| OpenAI path | `POST /v1/chat/completions` + `Authorization: Bearer <key>` |
-| Anthropic path | `POST /v1/messages` + `x-api-key: <key>` + `anthropic-version: 2023-06-01` |
-
-Standard `openai` / `anthropic` SDKs work as-is (`base_url=…:30400/v1` and
-`…:30400` respectively). Streaming, tool calling and reasoning parsing are
-enabled.
-
-Pick a pool by setting the `model` field. On overflow the gateway returns a
-real 400 (`prompt is too long: …`) which agent clients handle by
-auto-compacting; a session already past the limit needs a fresh start
-(`/clear` in Claude Code).
-
-### Coding agents
-
-| Client | Path | Setup | Details |
-|--------|------|-------|---------|
-| **Claude Code** | `/v1/messages` | `cp claude-code/settings.qwen3-8b.json ~/.claude/settings.json` | [claude-code/README.md](claude-code/README.md) |
-| **pi** | `/v1/chat/completions` | `cp pi/models.json pi/settings.json ~/.pi/agent/` | [pi/README.md](pi/README.md) |
-
-Templates are pre-tuned for the 131k pool — don't use stock client context
-settings (they assume 200k and long sessions 500).
-
-### Chat GUIs
-
-- **Open WebUI**: `http://<NODE_IP>:30401` (already deployed; first account = admin)
-- **Swagger UI**: `http://<NODE_IP>:30400/` (API playground)
-- **deepseek-chat**: `cd deepseek-harness && ./deepseek-chat` (stdlib-only REPL)
-- Any other OpenAI-compatible client: base `http://<NODE_IP>:30400/v1`, key `sk-qwen38b-local`
-
-### Monitoring
-
-Prometheus `http://<NODE_IP>:30900` · Grafana `http://<NODE_IP>:30300`
-(`admin` / `prometheus-admin`) · dashboard
-`http://<NODE_IP>:30300/d/sir-llm-platform-vllm`. Metric reference and PromQL:
-[monitoring/README.md](monitoring/README.md).
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---------|-----|
-| 401 from gateway | auth header: `Authorization: Bearer sk-qwen38b-local` (or `x-api-key` on `/v1/messages`) |
-| vLLM pods slow to Ready | normal — NPU model load; probe allows ~6 h |
-| Claude Code: 500 `maximum context length is 131072` | session too long → `/clear`; [claude-code/README.md](claude-code/README.md) |
-| Agent stalls with empty replies on long context | `python3 scripts/test-ctx-guard.py` — expect real 400s, not fake 200s |
-| `/v1/messages` 404 for `qwen3.8-27b-131k` | alias is OpenAI-path only — use `qwen3.8-27b` |
-| vLLM crash loop: `Address already in use` / Mooncake init failed | keep `mooncake.legacyRpcPortBinding: false` |
-| Mooncake: `put_end ≈ 0` / external hit rate 0.0% | needs `AscendStoreConnector` + `protocol: "ascend"` |
-| Stale mooncake segments after restarts | restart mooncake-master **first**, then roll vLLM pods |
-| LiteLLM config change didn't apply | `kubectl rollout restart deployment/litellm-proxy` |
-| New node can't pull from ghcr.io | add egress CA — see [Quick setup](#quick-setup) |
-
-## Security
-
-- Gateway auth is the static key `sk-qwen38b-local` on the lab network only —
-  treat the repo as lab-internal; put a real gateway in front before it
-  leaves the lab.
-- The `-claude` Service and Redis have no auth; both are ClusterIP-only.
-
-## Repository structure
-
-```
-sir-llm-platform/
-├── README.md                        # ← this documentation
-├── vllm-stack/                      # Helm chart (whole serving stack)
-│   ├── values.yaml                  # defaults reproduce the live deployment
-│   └── templates/                   # 01-configmap … 09-vllm-phase2
-├── monitoring/                      # Prometheus values, NPU exporter, monitors, dashboards
-├── claude-code/                     # Claude Code settings template
-├── pi/                              # pi models.json / settings.json templates
-├── deepseek-harness/                # minimal chat CLI + Open WebUI manifest
-└── scripts/test-ctx-guard.py        # overflow contract test
-```
+---
 
 Internal use only — Clyde Org
