@@ -2,7 +2,61 @@
 
 Self-hosted LLM serving: **Qwen3.8-27B** on **Huawei Ascend 910B NPUs** —
 **vLLM** + KV-aware router + **LiteLLM** gateway, Prometheus/Grafana
-monitoring.
+monitoring. Client how-tos:
+[claude-code](claude-code/README.md) · [pi](pi/README.md) ·
+[deepseek-harness](deepseek-harness/README.md) ·
+[monitoring](monitoring/README.md).
+
+## Models & pools
+
+Same weights, two hardware pools. The `model` field in the request body picks
+the pool — one base URL on both API paths.
+
+| Model name | Pool | Context |
+|------------|------|---------|
+| `qwen3.8-27b` | phase-1 (4 pods × TP=4, 910B) | 131,072 — default |
+| `qwen3.8-27b-262k` | phase-2 (910B3 64 GB HBM) | 262,144 — long context, off by default |
+| `qwen3.8-27b-131k` | phase-1 alias | 131,072 — OpenAI path only |
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph CLIENTS["Clients (lab network)"]
+        OA["OpenAI SDK / curl<br/>POST /v1/chat/completions"]
+        AN["Claude Code / Anthropic SDK<br/>POST /v1/messages"]
+        GUI["Open WebUI (30401), Swagger UI (30400)"]
+    end
+
+    LT["LiteLLM proxy<br/>NodePort 30400 (only external port)"]
+
+    RT["kv-router (ClusterIP)<br/>:8080 + results ZMQ :5559<br/>model-aware routing, context guard"]
+
+    R[("Redis :6379<br/>queue state")]
+
+    subgraph P1["Phase-1 pool · 131k<br/>qwen3.8-27b"]
+        P1S["kv-sidecar (pull) :9000"]
+        P1V["vLLM x4 pods, TP=4 :8200"]
+        P1S --> P1V
+    end
+
+    subgraph P2["Phase-2 pool · 262k (when enabled)<br/>qwen3.8-27b-262k"]
+        P2S["kv-sidecar (pull) :9000"]
+        P2V["vLLM pods, TP=4 :8200"]
+        P2S --> P2V
+    end
+
+    OA -->|"chat completions"| LT
+    AN -->|"/v1/messages"| LT
+    GUI --> LT
+    LT -->|"via router"| RT
+    LT -->|"Anthropic pass-through"| RT
+    RT <--> R
+    RT <-->|"/pull, /result_submit"| P1S
+    RT <-->|"/pull, /result_submit"| P2S
+    P1V -.->|"KV events ZMQ :5557"| RT
+    P2V -.->|"KV events ZMQ :5557"| RT
+```
 
 ## Quick start
 
