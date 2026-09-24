@@ -39,11 +39,29 @@ Or apply **per-project** by placing the settings in the project's `.claude/setti
 | Setting | Value | Notes |
 |---------|-------|-------|
 | `ANTHROPIC_BASE_URL` | `http://7.242.101.107:30400` | LiteLLM NodePort, Anthropic `/v1/messages` (model-aware via kv-router) |
-| `ANTHROPIC_MODEL` | `qwen3.8-27b` | Served model name (see Model selection) |
-| `ANTHROPIC_DEFAULT_*` | `qwen3.8-27b` | All Claude tiers (opus/sonnet/haiku) remap here |
+| `ANTHROPIC_MODEL` | `qwen3.8-27b` | Default model — 131k pool (see Model selection) |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `qwen3.8-27b` | On custom endpoints the "Default (recommended)" entry resolves to this var, so the opus tier stays on the 131k pool |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `qwen3.8-27b-262k` | Sonnet tier → 262k pool (long-context work) |
+| `ANTHROPIC_DEFAULT_*` | `qwen3.8-27b` | Haiku tier + small/fast model → 131k pool |
+| `"model"` | `qwen3.8-27b` | Pins the session to the 131k pool (overrides any user-level `"model"` alias) |
 | `ANTHROPIC_API_KEY` | `sk-qwen38b-local` | LiteLLM master key (required on the 30400 route) |
+| `CLAUDE_CODE_DISABLE_1M_CONTEXT` | `1` | Suppresses the spurious `[1m]` badge Claude Code appends to the default entry on custom endpoints |
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `131072` | Must match the selected pool's limit (see below) |
 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `8192` | Matches vLLM's per-request output budget |
+
+The tier names are the real served names, so the `/model` picker shows exactly
+the two pools, each labeled by the name it routes to:
+
+```
+Default (recommended)  qwen3.8-27b            (131k pool)
+qwen3.8-27b           Custom Opus model      (131k pool)
+qwen3.8-27b-262k      Custom Sonnet model    (262k pool)
+qwen3.8-27b           Custom Haiku model     (131k pool)
+```
+
+Switching a session to the 262k pool (Sonnet entry) is safe with the shipped
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW=131072` — it just compacts earlier (~110k
+instead of ~218k).
 
 ## Model selection (131k vs 262k pool)
 
@@ -62,16 +80,23 @@ name, so the `-131k` alias 404s there — on the OpenAI path LiteLLM rewrites
 the alias to `qwen3.8-27b` before it reaches the router, which is why it
 works only via `/v1/chat/completions`.
 
-Pick per tier in the settings `env` block, e.g. short-context tiers on the 131k
-pool and long-context work on the 262k pool:
+Pick per tier in the settings `env` block, e.g. default/short-context on the
+131k pool and long-context work on the 262k pool (this is what the template
+ships):
 
 ```json
-"ANTHROPIC_MODEL": "qwen3.8-27b-262k",
+"ANTHROPIC_MODEL": "qwen3.8-27b",
 "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-27b",
-"ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b",
-"ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3.8-27b-262k",
+"ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b-262k",
+"ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3.8-27b",
 "ANTHROPIC_SMALL_FAST_MODEL": "qwen3.8-27b"
 ```
+
+Note the tier-to-pool assignment is a bit inverted (sonnet = 262k, opus =
+131k) because on a custom endpoint the **"Default (recommended)" entry resolves
+to `ANTHROPIC_DEFAULT_OPUS_MODEL`** — keeping the opus tier on 131k is what
+makes the default (and the `"model"` pin) the 131k pool. The picker labels show
+the real model names, so pick the entry by name, not by tier.
 
 **`CLAUDE_CODE_AUTO_COMPACT_WINDOW` must match the pool the session's
 `ANTHROPIC_MODEL` uses:** `131072` for the 131k pool, `240000` for the 262k
@@ -144,7 +169,7 @@ Notes:
 ## Verify
 
 ```bash
-claude -p "Reply with PONG" --model opus
+claude -p "Reply with PONG"
 ```
 
 ## Alternative: direct `-claude` Service (port-forward only)

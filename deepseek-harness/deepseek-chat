@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""
+deepseek-chat — minimal streaming chat harness for any OpenAI-compatible endpoint.
+
+Preconfigured for the SIR LLM platform (LiteLLM proxy in ns sir-llm-platform):
+  http://7.242.101.107:30400  /  Bearer sk-qwen38b-local  /  model qwen3.8-27b
+
+Works out-of-the-box with DeepSeek too — just point the env vars at
+https://api.deepseek.com and set DEEPSEEK_MODEL=deepseek-chat.
+
+Stdlib only (no pip installs needed).
+
+Usage:
+  ./deepseek-chat                      # interactive REPL
+  ./deepseek-chat -p "hello"           # one-shot
+  DEEPSEEK_MODEL=qwen3.8-27b ./deepseek-chat --url http://other-host:30400
+
+Env vars: DEEPSEEK_BASE_URL, DEEPSEEK_API_KEY, DEEPSEEK_MODEL
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+DEFAULT_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "http://7.242.101.107:30400")
+DEFAULT_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-qwen38b-local")
+DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "qwen3.8-27b")
+
+USE_COLOR = sys.stdout.isatty()
+DIM = "\033[2m" if USE_COLOR else ""
+BOLD = "\033[1m" if USE_COLOR else ""
+RESET = "\033[0m" if USE_COLOR else ""
+CYAN = "\033[36m" if USE_COLOR else ""
+YELLOW = "\033[33m" if USE_COLOR else ""
+
+
+def build_body(model, messages, args, thinking):
+    body = {
+        "model": model,
+        "messages": messages,
+        "stream": not args.no_stream,
+    }
+    if args.max_tokens:
+        body["max_tokens"] = args.max_tokens
+    if args.temperature is not None:
+        body["temperature"] = args.temperature
+    # vLLM/Qwen: disable thinking via chat template. (Real DeepSeek API ignores
+    # unknown top-level fields in practice; use --extra-json '{"thinking":{"type":"disabled"}}'
+    # if you need DeepSeek-native thinking control.)
+    if not thinking and "deepseek.com" not in args.url:
+        body["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+    if args.extra_json:
+        try:
+            body.update(json.loads(args.extra_json))
+        except json.JSONDecodeError as e:
+            sys.exit(f"--extra-json is not valid JSON: {e}")
+    return body
+
+
+def post_stream(url, key, body):
+    """POST and yield (reasoning_delta, content_delta) tuples from SSE stream."""
+    req = urllib.request.Request(
+        url.rstrip("/") + "/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=args_timeout) as resp:
+        for raw in resp:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[len("data:"):].strip()
+            if data == "[DONE]":
+                return
+            try:
+                evt = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            choice = (evt.get("choices") or [{}])[0]
+            delta = choice.get("delta") or {}
+            yield delta.get("reasoning_content") or "", delta.get("content") or ""
+
+
+args_timeout = 600
+
+
+def stream_turn(base_url, key, model, messages, thinking, args):
+    """Run one turn; prints the reply and returns the assistant content."""
+    body = build_body(model, messages, args, thinking)
+    if body["stream"]:
+        printed_reasoning = False
+        parts = []
+        for reason, content in post_stream(base_url, key, body):
+            if reason:
+                print(DIM, end="")
+                print(reason, end="", flush=True)
+                printed_reasoning = True
+            if content:
+                if printed_reasoning:
+                    print(RESET, end="")
+                    print()
+                    printed_reasoning = False
+                print(content, end="", flush=True)
+                parts.append(content)
+        if printed_reasoning:
+            print(RESET, end="")
+        print()
+        return "".join(parts)
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=args_timeout) as resp:
+        evt = json.loads(resp.read().decode())
+    msg = evt["choices"][0]["message"]
+    if msg.get("reasoning_content"):
+        print(DIM + msg["reasoning_content"] + RESET)
+    print(msg.get("content") or "")
+    return msg.get("content") or ""
+
+
+def http_json(url, key):
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode())
+
+
+def do_command(line, ctx):
+    """Handle /commands. Returns False if REPL should exit."""
+    cmd, _, arg = line[1:].partition(" ")
+    cmd = cmd.strip()
+    arg = arg.strip()
+    if cmd in ("quit", "exit", "q"):
+        return False
+    elif cmd == "clear":
+        ctx["messages"] = []
+        print(f"{DIM}context cleared{RESET}")
+    elif cmd == "models":
+        try:
+            data = http_json(ctx["url"].rstrip("/") + "/v1/models", ctx["key"])
+            for m in data.get("data", []):
+                marker = " (active)" if m["id"] == ctx["model"] else ""
+                print(f"  {m['id']}{marker}")
+        except Exception as e:
+            print(f"failed to list models: {e}")
+    elif cmd == "model":
+        if arg:
+            ctx["model"] = arg
+            print(f"{DIM}model -> {arg}{RESET}")
+        else:
+            print(f"current model: {ctx['model']}")
+    elif cmd == "think":
+        if arg in ("on", "off"):
+            ctx["thinking"] = arg == "on"
+            print(f"{DIM}thinking display {'on' if ctx['thinking'] else 'off'}"
+                  f"{' (responses will include reasoning)' if ctx['thinking'] else ''}{RESET}")
+        else:
+            print(f"thinking {'on' if ctx['thinking'] else 'off'} — use: /think on|off")
+    elif cmd == "help":
+        print(
+            "  /help              this help\n"
+            "  /models            list models on the endpoint\n"
+            "  /model <name>      switch model\n"
+            "  /think on|off      show/hide model reasoning (Qwen: disables thinking)\n"
+            "  /clear             clear conversation context\n"
+            "  /quit              exit (Ctrl-D also works)"
+        )
+    else:
+        print(f"unknown command: /{cmd} (try /help)")
+    return True
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Streaming chat harness for OpenAI-compatible endpoints "
+        "(preconfigured for the SIR LLM platform).",
+    )
+    ap.add_argument("--url", default=DEFAULT_BASE_URL,
+                    help=f"base URL (default: {DEFAULT_BASE_URL})")
+    ap.add_argument("--key", default=DEFAULT_API_KEY,
+                    help="API key (default: $DEEPSEEK_API_KEY or built-in dev key)")
+    ap.add_argument("--model", "-m", default=DEFAULT_MODEL,
+                    help=f"model name (default: {DEFAULT_MODEL})")
+    ap.add_argument("--system", "-s", default=None, help="system prompt")
+    ap.add_argument("--prompt", "-p", default=None,
+                    help="one-shot prompt (no REPL)")
+    ap.add_argument("--max-tokens", type=int, default=None)
+    ap.add_argument("--temperature", type=float, default=None)
+    ap.add_argument("--no-stream", action="store_true", help="disable streaming")
+    ap.add_argument("--no-think", action="store_true",
+                    help="start with thinking display off (default on this model)")
+    ap.add_argument("--extra-json", default=None,
+                    help="JSON object merged into the request body, "
+                         "e.g. '{\"top_p\": 0.9}'")
+    args = ap.parse_args()
+
+    ctx = {
+        "url": args.url,
+        "key": args.key,
+        "model": args.model,
+        "thinking": not args.no_think,
+        "messages": [],
+    }
+    if args.system:
+        ctx["messages"].append({"role": "system", "content": args.system})
+
+    try:
+        if args.prompt is not None:
+            ctx["messages"].append({"role": "user", "content": args.prompt})
+            print(BOLD + f"{args.model}:" + RESET, end=" ")
+            stream_turn(args.url, args.key, args.model, ctx["messages"],
+                        ctx["thinking"], args)
+            return
+        print(f"{DIM}deepseek-chat — {args.url} — model {args.model}")
+        print(f"thinking {'on' if ctx['thinking'] else 'off'} — /help for commands{RESET}")
+        while True:
+            try:
+                line = input(f"{CYAN}you>{RESET} ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+            if not line:
+                continue
+            if line.startswith("/"):
+                if not do_command(line, ctx):
+                    return
+                continue
+            ctx["messages"].append({"role": "user", "content": line})
+            print(f"{BOLD}{args.model}>{RESET}", end=" ")
+            reply = stream_turn(args.url, args.key, args.model, ctx["messages"],
+                                ctx["thinking"], args)
+            ctx["messages"].append({"role": "assistant", "content": reply})
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:500]
+        sys.exit(f"HTTP {e.code} from endpoint: {detail}")
+    except urllib.error.URLError as e:
+        sys.exit(f"cannot reach endpoint {args.url}: {e.reason}")
+
+
+if __name__ == "__main__":
+    main()

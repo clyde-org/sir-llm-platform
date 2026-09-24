@@ -1,0 +1,82 @@
+# Open WebUI chat GUI for the SIR LLM platform.
+#
+#   kubectl apply -f deepseek-harness/open-webui.yaml
+#   kubectl get svc open-webui -n sir-llm-platform   # → http://<any-node-ip>:30401
+#
+# First visit: create an account — it becomes the admin.
+#
+# NOTE: uses emptyDir (no StorageClass exists on this cluster).
+# If the pod is deleted/recreated, the admin account and chat history reset.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: sir-llm-platform
+  labels:
+    app: open-webui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open-webui
+  template:
+    metadata:
+      labels:
+        app: open-webui
+    spec:
+      # the 7.150.x.x "tmp0306" nodes pull from ghcr.io very slowly / stall.
+      # (nodeAffinity is rejected by this cluster's API server, so nodeSelector +
+      # the sir-llm-platform/gui-host=true label on the 2eff03de phase1 nodes.)
+      nodeSelector:
+        sir-llm-platform/gui-host: "true"
+      containers:
+        - name: open-webui
+          image: ghcr.io/open-webui/open-webui:main
+          ports:
+            - containerPort: 8080
+          env:
+            # in-cluster DNS to LiteLLM — no NodePort hairpin needed
+            - name: OPENAI_API_BASE_URL
+              value: http://litellm-proxy:4000/v1
+            - name: OPENAI_API_KEY
+              value: sk-qwen38b-local
+            # pod network has no egress; skip HF model downloads at startup
+            # (disables RAG embeddings — chat via LiteLLM is unaffected)
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+          volumeMounts:
+            - name: data
+              mountPath: /app/backend/data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-webui
+  namespace: sir-llm-platform
+  labels:
+    app: open-webui
+spec:
+  type: NodePort
+  selector:
+    app: open-webui
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30401

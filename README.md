@@ -92,47 +92,62 @@ port-forward`).
 
 ## Documentation
 
-- [Deployment Guide](DEPLOYMENT.md) - Complete setup and usage
-- [Monitoring](monitoring/README.md) - Prometheus & Grafana setup
+**Start here → [docs/platform/README.md](docs/platform/README.md)** — the complete
+documentation set for this platform (written for colleagues new to the lab):
+
+- [Architecture](docs/platform/architecture.md) — system overview with figures: request
+  paths, component responsibilities, KV-cache store, context guard, monitoring
+- [Setup guide](docs/platform/setup.md) — prerequisites, Helm installation, phase-2
+  rollout, verification checklist, day-2 operations, rollback
+- [User guide](docs/platform/user-guide.md) — API calls, model/pool selection, coding
+  agents (Claude Code, pi), chat GUIs, monitoring, troubleshooting
+
+Deep references:
+
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Deployment deep-dive (Mooncake root-cause history,
+  exact Helm values, vLLM arguments, router env)
+- [Monitoring](monitoring/README.md) - Prometheus & Grafana setup, metric reference
 - [Claude Code integration](claude-code/README.md) - Out-of-the-box client setup (copy `settings.qwen3-8b.json`)
 - [Pi integration](pi/README.md) - Out-of-the-box client setup (copy `pi/models.json` + `pi/settings.json`)
+- [deepseek-chat harness](deepseek-harness/README.md) - Minimal stdlib-only chat CLI +
+  alternative GUI options
 
 ## Repository Structure
 
 ```
 sir-llm-platform/
 ├── README.md
-├── DEPLOYMENT.md
-├── claude-code/
-│   ├── README.md
-│   └── settings.qwen3-8b.json
-├── pi/
-│   ├── README.md
-│   ├── models.json
-│   └── settings.json
-├── monitoring/
-│   ├── README.md
-│   ├── servicemonitors.yaml
-│   ├── npu-exporter.yaml
-│   ├── dashboards/
-│   └── prometheus/
-│       └── values.yaml
-└── vllm-stack/
-    ├── Chart.yaml
-    ├── values.yaml
-    ├── values/
-    │   ├── qwen3-8b.yaml
-    │   └── values-qwen38b.yaml
-    └── templates/
-        ├── 01-configmap.yaml
-        ├── 02-redis.yaml
-        ├── 03-router.yaml
-        ├── 04-vllm.yaml
-        ├── 05-litellm.yaml
-        ├── 06-claude-service.yaml
-        ├── 07-podmonitors.yaml
-        ├── 08-mooncake.yaml
-        └── _helpers.tpl
+├── DEPLOYMENT.md                    # deployment deep-dive
+├── docs/
+│   ├── platform/                    # ← main documentation (start here)
+│   │   ├── README.md
+│   │   ├── architecture.md
+│   │   ├── setup.md
+│   │   └── user-guide.md
+│   └── pool-router-sidecar-changes.md
+├── vllm-stack/                      # Helm chart (the whole serving stack)
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   ├── values/                      # stale older-schema files (do not use)
+│   │   ├── qwen3-8b.yaml
+│   │   └── values-qwen38b.yaml
+│   └── templates/
+│       ├── 01-configmap.yaml        # model-registry + litellm-config
+│       ├── 02-redis.yaml
+│       ├── 03-router.yaml
+│       ├── 04-vllm.yaml             # phase-1 vLLM pods (+ kv-sidecar)
+│       ├── 05-litellm.yaml
+│       ├── 06-claude-service.yaml
+│       ├── 07-podmonitors.yaml
+│       ├── 08-mooncake.yaml
+│       ├── 09-vllm-phase2.yaml      # phase-2 (262k) pool, off by default
+│       └── _helpers.tpl
+├── monitoring/                      # Prometheus values, NPU exporter, monitors, dashboards
+├── claude-code/                     # Claude Code settings template
+├── pi/                              # pi models.json + settings.json templates
+├── deepseek-harness/                # minimal Python chat CLI + Open WebUI manifest
+└── scripts/
+    └── test-ctx-guard.py            # client-side overflow contract test
 ```
 
 ## License

@@ -1,0 +1,23 @@
+{
+  "providers": {
+    "sirlab": {
+      "baseUrl": "http://7.242.101.107:30400/v1",
+      "api": "openai-completions",
+      "apiKey": "sk-qwen38b-local",
+      "compat": {
+        "supportsReasoningEffort": false,
+        "thinkingFormat": "qwen-chat-template"
+      },
+      "models": [
+        {
+          "id": "qwen3.8-27b",
+          "name": "Qwen3.8 27B",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 131072,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}

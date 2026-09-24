@@ -1,0 +1,12 @@
+{
+  "defaultProvider": "sirlab",
+  "defaultModel": "qwen3.8-27b",
+  "enableInstallTelemetry": false,
+  "theme": "dark",
+  "quietStartup": true,
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 32768,
+    "keepRecentTokens": 20000
+  }
+}
