@@ -504,12 +504,41 @@ The router runs with:
 - `VLLM_PORT=8200`
 - `ROUTER_MODE=pull` (kv-sidecars pull from the router and post results back via
   `RESULT_TRANSPORT_MODE=submit_ack` / `/result_submit`)
+- `CTX_GUARD=true`, `CTX_GUARD_MARGIN=4096`, `CTX_GUARD_MAX_MODEL_LEN=0`
+
+### Context Guard (CTX_GUARD)
+
+Rejects `/v1/chat/completions` requests that cannot fit the model's context window
+with an immediate 400 using the vLLM error shape:
+
+```
+{"error":{"message":"prompt is too long: <N> tokens > <max_model_len> maximum", ...}}
+```
+
+Before this (router < d0eec27), an oversized request went through the sidecar
+pipeline and came back as a **fake 200** (empty stream when `stream=true`), so
+agent clients like pi never saw an overflow error and could not auto-compact
+and continue.
+
+- `<N>` = prompt tokens counted by the inline tokenizer (`KV_TOKENIZER_PATH`);
+  `CTX_GUARD_MARGIN` is subtracted from the cap to cover chat-template and
+  tool-schema tokens the flattened prompt undercounts.
+- The cap is the `max_model_len` the model's endpoints declare in `/pull`
+  (live per pool: 131072 for `qwen3.8-27b`, 262144 for `qwen3.8-27b-262k`);
+  `CTX_GUARD_MAX_MODEL_LEN` pins it statically when non-zero.
+- Fails open (no rejection) until the first endpoint declares a cap or if the
+  tokenizer is unavailable.
+- Rejections are logged as `[API] ctx_guard reject model=... max_tokens=...`.
+- Pairs with the sidecar change in the same commit: vLLM errors that get past
+  the guard (estimation miss) are propagated as `result["error"]` and surfaced
+  as real error responses instead of error text masquerading as model output.
 
 ### Why KV-Aware is Disabled
 
-The kv-router image lacks `sentencepiece` or `tiktoken` Python packages needed for
-tokenizer initialization. With `KV_AWARE=true`, the router attempts to load the
-tokenizer and crashes.
+`KV_AWARE` is off by choice for this single-model stack (`LEN_AWARE` short-first
+is the active policy). Note: the Qwen tokenizer itself loads fine with the
+bundled `transformers`+`tokenizers` (CTX_GUARD uses it); `sentencepiece`/
+`tiktoken` would only be needed for other tokenizer families.
 
 To enable KV-aware routing, you would need:
 1. A kv-router image with tokenizer dependencies installed, OR

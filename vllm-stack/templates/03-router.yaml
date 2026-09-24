@@ -131,6 +131,14 @@ spec:
             - name: KV_CANONICALISE_TOOLS
               value: "1"
 
+            # ---- Context guard (real 400 for over-context requests) ----
+            - name: CTX_GUARD
+              value: {{ .Values.router.ctxGuard | default false | quote }}
+            - name: CTX_GUARD_MARGIN
+              value: {{ .Values.router.ctxGuardMargin | default 4096 | quote }}
+            - name: CTX_GUARD_MAX_MODEL_LEN
+              value: {{ .Values.router.ctxGuardMaxModelLen | default 0 | quote }}
+
             # ---- Unified routing strategy (overrides kvAware/affinityEnabled when set) ----
             - name: ROUTER_STRATEGY
               value: "{{ .Values.router.strategy | default "" }}"

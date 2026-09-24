@@ -61,7 +61,7 @@ vllm:
 router:
   serviceName: router-service
   replicas: 1
-  imageTag: "cc0b976d"   # llm-la-icbc build tag; never :latest (adds model-aware /v1/messages)
+  imageTag: "d0eec27a"   # llm-la-icbc d0eec27 rebuilt for arm64; CTX_GUARD (real 400 on overflow)
   # containerd on the pool nodes has direct egress to ghcr.io, so kubelet
   # pulls on first use (IfNotPresent). The old "import into containerd by
   # hand" step is obsolete.
@@ -76,6 +76,17 @@ router:
   lenAware: true
   lenPolicy: short_first
   strategy: ""
+  # Context guard: reject requests that cannot fit the model's context window
+  # with an immediate 400 "prompt is too long: N tokens > M maximum" (the same
+  # shape vLLM returns). Without it, the sidecar pipeline turns the vLLM 400
+  # into a fake 200 (an empty stream when stream=true) and agent clients such
+  # as pi never see the overflow error, so they cannot auto-compact and
+  # continue. Cap = max_model_len declared by the model's endpoints (live),
+  # or ctxGuardMaxModelLen when pinned (non-zero). Needs the inline tokenizer
+  # (hashSource=inline; loads via transformers+tokenizers, no sentencepiece).
+  ctxGuard: true
+  ctxGuardMargin: 4096
+  ctxGuardMaxModelLen: 0
   resources:
     requests:
       cpu: "500m"
@@ -93,7 +104,7 @@ router:
 # kv-sidecar (one per vLLM pod)
 sidecar:
   enabled: true
-  imageTag: "cc0b976d"   # llm-la-icbc build tag (paired with router); never :latest
+  imageTag: "cc0b976d"   # llm-la-icbc build tag (paired with router); never :latest — arm64 build d0eec27a ready, roll in phase 2
   imagePullPolicy: IfNotPresent   # ghcr direct egress available (see router note above)
   streamingMode: true
 
