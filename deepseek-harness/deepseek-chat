@@ -3,7 +3,8 @@
 deepseek-chat — minimal streaming chat harness for any OpenAI-compatible endpoint.
 
 Preconfigured for the SIR LLM platform (LiteLLM proxy in ns sir-llm-platform):
-  http://7.242.101.107:30400  /  Bearer sk-qwen38b-local  /  model qwen3.8-27b
+  http://<NODE_IP>:30400  /  Bearer sk-qwen38b-local  /  model qwen3.8-27b
+  (any cluster node IP; set DEEPSEEK_BASE_URL or pass --url)
 
 Works out-of-the-box with DeepSeek too — just point the env vars at
 https://api.deepseek.com and set DEEPSEEK_MODEL=deepseek-chat.
@@ -25,7 +26,7 @@ import sys
 import urllib.error
 import urllib.request
 
-DEFAULT_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "http://7.242.101.107:30400")
+DEFAULT_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "http://<NODE_IP>:30400")
 DEFAULT_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-qwen38b-local")
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "qwen3.8-27b")
 
@@ -205,6 +206,8 @@ def main():
                     help="JSON object merged into the request body, "
                          "e.g. '{\"top_p\": 0.9}'")
     args = ap.parse_args()
+    if not args.url or "<NODE_IP>" in args.url:
+        sys.exit("set DEEPSEEK_BASE_URL or pass --url (e.g. http://<NODE_IP>:30400)")
 
     ctx = {
         "url": args.url,

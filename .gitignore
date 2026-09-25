@@ -1,0 +1,7 @@
+# Project-local Claude Code state (auto-approved permission rules, local
+# model pins) — machine-specific, never push it.
+.claude/
+
+# Python build artifacts
+__pycache__/
+*.pyc

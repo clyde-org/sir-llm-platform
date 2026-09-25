@@ -21,7 +21,7 @@ If `~/.pi/agent/models.json` already has other providers, **merge** the
 Verify:
 
 ```bash
-pi --list-models qwen        # should list sirlab / qwen3.8-27b
+pi --list-models qwen        # should list sirlab / qwen3.8-27b{,-131k,-262k}
 pi -p "Reply with PONG"
 ```
 
@@ -32,15 +32,19 @@ session (live-editable, no restart).
 
 | File | Field | Value | Why |
 |------|-------|-------|-----|
-| models.json | `baseUrl` | `http://7.242.101.107:30400/v1` | LiteLLM, OpenAI-compatible route |
+| models.json | `baseUrl` | `http://<NODE_IP>:30400/v1` | any cluster node; LiteLLM, OpenAI-compatible route |
 | models.json | `apiKey` | `sk-qwen38b-local` | shared lab master key |
-| models.json | `contextWindow` | `131072` | the real vLLM limit |
+| models.json | model ids | `qwen3.8-27b`, `…-131k`, `…-262k` | same weights, two pools (32G / 64G HBM); the pool is picked by the model name |
+| models.json | `contextWindow` | `131072` / `262144` | the real vLLM limit per pool |
 | models.json | `maxTokens` | `8192` | **do not raise** — pi's input wall is `contextWindow − maxTokens`; stock values put it at ~33k and long sessions die there |
+| settings.json | `defaultModel` | `qwen3.8-27b-131k` | new sessions start on the 131k pool |
+| settings.json | `defaultThinkingLevel` | `high` | Qwen3 thinking budget |
 | settings.json | `compaction.reserveTokens` | `32768` | compaction triggers at 98,304 tokens — well before the 122,880 input wall |
 | settings.json | `compaction.keepRecentTokens` | `20000` | recent context kept verbatim around the cut point |
 
-With these values, sessions run to ~122k input tokens and pi compacts cleanly
-instead of failing with `prompt is too long`.
+With these values, sessions run to ~122k input tokens on the 131k pool (the
+262k pool's wall is ~254k) and pi compacts cleanly instead of failing with
+`prompt is too long`.
 
 ## Notes
 

@@ -27,7 +27,7 @@ What it verifies (the router's CTX_GUARD + error-surfacing behaviour):
 
 Only the Python standard library is used. Environment overrides:
 
-    CTX_TEST_URL          gateway base URL   (default http://7.242.101.107:30400)
+    CTX_TEST_URL          gateway base URL   (required — e.g. http://<NODE_IP>:30400)
     CTX_TEST_API_KEY      bearer key         (default sk-qwen38b-local)
     CTX_TEST_MODEL_131K   small-pool model   (default qwen3.8-27b)
     CTX_TEST_MODEL_262K   large-pool model   (default qwen3.8-27b-262k)
@@ -45,7 +45,9 @@ import time
 import urllib.error
 import urllib.request
 
-URL = os.environ.get("CTX_TEST_URL", "http://7.242.101.107:30400")
+URL = os.environ.get("CTX_TEST_URL")
+if not URL:
+    sys.exit("CTX_TEST_URL is required (e.g. http://<NODE_IP>:30400)")
 API_KEY = os.environ.get("CTX_TEST_API_KEY", "sk-qwen38b-local")
 MODEL_131K = os.environ.get("CTX_TEST_MODEL_131K", "qwen3.8-27b")
 MODEL_262K = os.environ.get("CTX_TEST_MODEL_262K", "qwen3.8-27b-262k")

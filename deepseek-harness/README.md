@@ -58,7 +58,7 @@ Any OpenAI-compatible client works: base URL `http://<NODE_IP>:30400/v1`, key
 
 | GUI | Type | Notes |
 |-----|------|-------|
-| LiteLLM Swagger UI | browser, zero install | `http://7.242.101.107:30400/` — API playground, not a chat UI |
+| LiteLLM Swagger UI | browser, zero install | `http://<NODE_IP>:30400/` — API playground, not a chat UI |
 | Open WebUI | web (Docker) | most popular self-hosted chat GUI; model picker, files, RAG |
 | LibreChat | web (Docker compose) | multi-provider, shares, agents |
 | NextChat | web (single container) | lightweight; paste base URL + key in settings |

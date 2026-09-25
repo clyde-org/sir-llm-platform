@@ -23,12 +23,12 @@ Verify: `claude -p "Reply with PONG"`
 
 | Setting | Value | Notes |
 |---------|-------|-------|
-| `ANTHROPIC_BASE_URL` | `http://7.242.101.107:30400` | LiteLLM NodePort, Anthropic `/v1/messages` |
+| `ANTHROPIC_BASE_URL` | `http://<NODE_IP>:30400` | any cluster node, LiteLLM NodePort, Anthropic `/v1/messages` |
 | `ANTHROPIC_MODEL` | `qwen3.8-27b` | default — 131k pool |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | `qwen3.8-27b` | "Default (recommended)" resolves to this var, so the default stays on 131k |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `qwen3.8-27b-262k` | Sonnet tier → 262k pool (long-context work) |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` | `qwen3.8-27b` | → 131k pool |
-| `"model"` | `qwen3.8-27b` | pins the session to the 131k pool |
+| `"model"` | `sonnet` | resolves to `ANTHROPIC_DEFAULT_SONNET_MODEL` → 262k pool (long-context default); pin `"qwen3.8-27b"` instead to stay on 131k |
 | `ANTHROPIC_API_KEY` | `sk-qwen38b-local` | LiteLLM master key (**not** an Anthropic key) |
 | `CLAUDE_CODE_DISABLE_1M_CONTEXT` | `1` | suppresses the spurious `[1m]` badge on custom endpoints |
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `131072` | **required** — see below |
@@ -49,10 +49,12 @@ Claude Code doesn't know this model name, so it assumes a **200k** context
 window and sets its autocompact trigger (~178.8k) *above* the model's 131072
 hard limit — long sessions die with `API Error: 500 … maximum context length
 is 131072` before compaction can fire. The template's `131072` puts the
-trigger at ≈110k, safely under the limit.
+trigger at ≈110k, safely under the limit on either pool.
 
-- For a session on the **262k** pool, raise it to `240000` and restart the
-  session (env is read at session start).
+- The default session (`"model": "sonnet"`) runs on the **262k** pool, where
+  the 110k trigger is conservative but safe; raise the window to `240000` and
+  restart the session (env is read at session start) to use the full 262k
+  window before compaction.
 - `CLAUDE_CODE_MAX_CONTEXT_TOKENS` does **not** fix this (only read when
   `DISABLE_COMPACT` is set, which disables compaction entirely).
 - Don't "fix" it by raising vLLM `maxModelLen` — 131072 is the model's native

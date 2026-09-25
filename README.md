@@ -60,8 +60,8 @@ flowchart TD
 
 ## Quick start
 
-One base URL for everything: **`http://<NODE_IP>:30400`** (e.g.
-`7.242.101.107`) with the shared lab key **`sk-qwen38b-local`**. Pick a pool
+One base URL for everything: **`http://<NODE_IP>:30400`** (any cluster node)
+with the shared lab key **`sk-qwen38b-local`**. Pick a pool
 via the `model` field: `qwen3.8-27b` (131k, default) or
 `qwen3.8-27b-262k` (262k, long context). Standard `openai` / `anthropic`
 SDKs work as-is (`base_url=…:30400/v1` and `…:30400` respectively).
@@ -85,7 +85,7 @@ Exact `~/.claude/settings.json`:
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "MCP_TIMEOUT": "60000",
     "ANTHROPIC_API_KEY": "sk-qwen38b-local",
-    "ANTHROPIC_BASE_URL": "http://7.242.101.107:30400",
+    "ANTHROPIC_BASE_URL": "http://<NODE_IP>:30400",
     "ANTHROPIC_MODEL": "qwen3.8-27b",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-27b",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b-262k",
@@ -98,9 +98,9 @@ Exact `~/.claude/settings.json`:
     "HTTPS_PROXY": "http://127.0.0.1:3128",
     "http_proxy": "http://127.0.0.1:3128",
     "https_proxy": "http://127.0.0.1:3128",
-    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com,7.242.101.107"
+    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com,<NODE_IP>"
   },
-  "model": "qwen3.8-27b",
+  "model": "sonnet",
   "enabledPlugins": {
     "cc-demo-plugin@rtos-cc-marketplace": true
   },
@@ -112,10 +112,12 @@ Exact `~/.claude/settings.json`:
 
 - **`CLAUDE_CODE_AUTO_COMPACT_WINDOW` is required** — without it Claude Code
   assumes a 200k window and long sessions die with
-  `500 … maximum context length is 131072`. On the 262k pool raise it to
-  `240000` (env is read at session start).
-- The Sonnet tier is pointed at the 262k pool for long-context work;
-  everything else stays on 131k.
+  `500 … maximum context length is 131072`. The template's `131072` trigger
+  (≈110k) is safe on both pools; on the 262k pool (the default below) raise it
+  to `240000` to use the full window (env is read at session start).
+- The template pins the session to the **sonnet tier → 262k pool**
+  (`"model": "sonnet"`); everything else stays on 131k. Pin
+  `"qwen3.8-27b"` explicitly to stay on 131k.
 - The `*_PROXY` lines and `enabledPlugins` are workstation-specific — drop
   them if your machine reaches the cluster directly.
 
@@ -137,7 +139,7 @@ Exact `~/.pi/agent/models.json`:
 {
   "providers": {
     "sirlab": {
-      "baseUrl": "http://7.242.101.107:30400/v1",
+      "baseUrl": "http://<NODE_IP>:30400/v1",
       "api": "openai-completions",
       "apiKey": "sk-qwen38b-local",
       "compat": {
@@ -152,6 +154,22 @@ Exact `~/.pi/agent/models.json`:
           "input": ["text", "image"],
           "contextWindow": 131072,
           "maxTokens": 8192
+        },
+        {
+          "id": "qwen3.8-27b-131k",
+          "name": "Qwen3.8 27B (131k context, 32G pool)",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 131072,
+          "maxTokens": 8192
+        },
+        {
+          "id": "qwen3.8-27b-262k",
+          "name": "Qwen3.8 27B (262k context, 64G pool)",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 262144,
+          "maxTokens": 8192
         }
       ]
     }
@@ -164,7 +182,7 @@ Exact `~/.pi/agent/settings.json`:
 ```json
 {
   "defaultProvider": "sirlab",
-  "defaultModel": "qwen3.8-27b",
+  "defaultModel": "qwen3.8-27b-131k",
   "enableInstallTelemetry": false,
   "theme": "dark",
   "quietStartup": true,
@@ -172,15 +190,17 @@ Exact `~/.pi/agent/settings.json`:
     "enabled": true,
     "reserveTokens": 32768,
     "keepRecentTokens": 20000
-  }
+  },
+  "defaultThinkingLevel": "high"
 }
 ```
 
 - **Don't raise `maxTokens: 8192`** — pi's input wall is
   `contextWindow − maxTokens`; stock values shrink it to ~33k and long
   sessions die there.
-- The compaction settings trigger at ~98k tokens, so sessions run to ~122k
-  input and compact cleanly instead of failing with `prompt is too long`.
+- The compaction settings trigger at ~98k tokens, so 131k-pool sessions run
+  to ~122k input (262k pool: ~254k) and compact cleanly instead of failing
+  with `prompt is too long`.
 - `models.json` is reloaded when you open `/model` in a session — live-edit
   without restart.
 
