@@ -20,6 +20,12 @@ the pool — one base URL on both API paths.
 
 ## Architecture
 
+![SIR LLM Platform — two deployments, one gateway](docs/architecture.png)
+
+*Same Qwen3.8-27B weights, two hardware pools — one LiteLLM gateway, the
+request's `model` name picks the pool. (Editable source:
+[`docs/architecture.svg`](docs/architecture.svg).)*
+
 ```mermaid
 flowchart TD
     subgraph CLIENTS["Clients (lab network)"]

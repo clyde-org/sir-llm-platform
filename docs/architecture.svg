@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="860" viewBox="0 0 1440 860" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7 z" fill="#475569"/></marker>
+    <marker id="ab" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7 z" fill="#2563eb"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7 z" fill="#ea580c"/></marker>
+    <marker id="ad" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7 z" fill="#94a3b8"/></marker>
+    <marker id="ad2" markerWidth="9" markerHeight="7" refX="1" refY="3.5" orient="auto"><path d="M9,0 L0,3.5 L9,7 z" fill="#94a3b8"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="1440" height="860" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="720" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#1e293b">SIR LLM Platform — two deployments, one gateway</text>
+  <text x="720" y="56" text-anchor="middle" font-size="12.5" fill="#64748b">Qwen3.8-27B on Huawei Ascend 910B / 910B3 NPUs · vLLM-Ascend v0.23.0rc1 · KV-aware routing · LiteLLM gateway</text>
+
+  <!-- Clients -->
+  <rect x="470" y="76" width="500" height="56" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="720" y="98" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e293b">Clients (lab workstations)</text>
+  <text x="720" y="118" text-anchor="middle" font-size="12" fill="#475569">pi · Claude Code · deepseek-harness · OpenAI / Anthropic SDK · curl</text>
+
+  <!-- clients -> litellm -->
+  <line x1="720" y1="132" x2="720" y2="166" stroke="#475569" stroke-width="1.8" marker-end="url(#a)"/>
+  <text x="736" y="153" font-size="11" fill="#64748b">POST /v1/chat/completions · POST /v1/messages</text>
+
+  <!-- LiteLLM -->
+  <rect x="420" y="168" width="600" height="84" rx="8" fill="#ffffff" stroke="#475569" stroke-width="1.8"/>
+  <text x="720" y="192" text-anchor="middle" font-size="14.5" font-weight="bold" fill="#1e293b">LiteLLM proxy — gateway</text>
+  <text x="720" y="213" text-anchor="middle" font-size="12" fill="#334155">NodePort :30400 — the only external port · shared lab key</text>
+  <text x="720" y="233" text-anchor="middle" font-size="12" fill="#334155">the request's model field picks the pool · ctx-guard on context-400</text>
+
+  <!-- litellm -> router -->
+  <line x1="720" y1="252" x2="720" y2="292" stroke="#475569" stroke-width="1.8" marker-end="url(#a)"/>
+  <text x="736" y="275" font-size="11" fill="#64748b">forward</text>
+
+  <!-- kv-router -->
+  <rect x="420" y="294" width="600" height="64" rx="8" fill="#ffffff" stroke="#475569" stroke-width="1.8"/>
+  <text x="720" y="318" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1e293b">kv-router (ClusterIP :8080)</text>
+  <text x="720" y="340" text-anchor="middle" font-size="11.5" fill="#334155">model-aware routing · context guard · KV-cache affinity</text>
+
+  <!-- redis -->
+  <line x1="1020" y1="326" x2="1080" y2="326" stroke="#475569" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="1080" y="296" width="220" height="60" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="1190" y="320" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e293b">Redis :6379</text>
+  <text x="1190" y="340" text-anchor="middle" font-size="11" fill="#475569">queue / affinity state</text>
+
+  <!-- router -> panel 1 (forward, blue) -->
+  <line x1="560" y1="358" x2="380" y2="418" stroke="#2563eb" stroke-width="1.8" marker-end="url(#ab)"/>
+  <!-- router -> panel 2 (forward, orange) -->
+  <line x1="880" y1="358" x2="1060" y2="418" stroke="#ea580c" stroke-width="1.8" marker-end="url(#ao)"/>
+  <text x="470" y="392" font-size="11" fill="#2563eb">/pull · /result_submit</text>
+  <text x="930" y="392" font-size="11" fill="#ea580c">/pull · /result_submit</text>
+
+  <!-- panel 1 -> router (KV events, dashed) -->
+  <line x1="210" y1="420" x2="440" y2="362" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#ad)"/>
+  <line x1="1230" y1="420" x2="1000" y2="362" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#ad)"/>
+  <text x="90" y="398" font-size="11" fill="#64748b">KV events :5557</text>
+  <text x="1350" y="398" text-anchor="end" font-size="11" fill="#64748b">KV events :5557</text>
+
+  <!-- ============ PANEL 1 ============ -->
+  <rect x="60" y="420" width="620" height="280" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.8"/>
+  <text x="84" y="450" font-size="15.5" font-weight="bold" fill="#1e3a8a">Deployment 1 · vllm-qwen3-8b — phase-1 pool (131k)</text>
+  <text x="84" y="470" font-size="12" fill="#334155">2 nodes × 8× Ascend 910B (32 GB HBM) · 4 pods × TP=4 — all 8 NPUs/node occupied</text>
+
+  <!-- pod chips -->
+  <g font-size="11">
+    <rect x="84"  y="486" width="132" height="56" rx="6" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="150"  y="505" text-anchor="middle" font-weight="bold" fill="#1e293b">pod-1</text>
+    <text x="150"  y="521" text-anchor="middle" fill="#475569">TP=4 · 4 NPUs</text>
+    <text x="150"  y="535" text-anchor="middle" fill="#475569">vLLM + kv-sidecar</text>
+
+    <rect x="228" y="486" width="132" height="56" rx="6" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="294"  y="505" text-anchor="middle" font-weight="bold" fill="#1e293b">pod-2</text>
+    <text x="294"  y="521" text-anchor="middle" fill="#475569">TP=4 · 4 NPUs</text>
+    <text x="294"  y="535" text-anchor="middle" fill="#475569">vLLM + kv-sidecar</text>
+
+    <rect x="372" y="486" width="132" height="56" rx="6" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="438"  y="505" text-anchor="middle" font-weight="bold" fill="#1e293b">pod-3</text>
+    <text x="438"  y="521" text-anchor="middle" fill="#475569">TP=4 · 4 NPUs</text>
+    <text x="438"  y="535" text-anchor="middle" fill="#475569">vLLM + kv-sidecar</text>
+
+    <rect x="516" y="486" width="132" height="56" rx="6" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="582"  y="505" text-anchor="middle" font-weight="bold" fill="#1e293b">pod-4</text>
+    <text x="582"  y="521" text-anchor="middle" fill="#475569">TP=4 · 4 NPUs</text>
+    <text x="582"  y="535" text-anchor="middle" fill="#475569">vLLM + kv-sidecar</text>
+  </g>
+
+  <!-- spec block 1 -->
+  <rect x="84" y="556" width="572" height="124" rx="8" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="104" y="582" font-size="13.5" font-weight="bold" fill="#1e3a8a">Model: Qwen3.8-27B (hostPath /data/models)</text>
+  <text x="104" y="606" font-size="12" fill="#334155">max-model-len 131,072 · max-num-seqs 8</text>
+  <text x="104" y="626" font-size="12" fill="#334155">MTP speculative decoding ×3 · prefix caching</text>
+  <text x="104" y="646" font-size="12" fill="#334155">served as: qwen3.8-27b  (+ alias qwen3.8-27b-131k, OpenAI path)</text>
+  <text x="104" y="666" font-size="12" fill="#334155">sidecar auto-repair: clamps max_tokens on context-400</text>
+
+  <!-- ============ PANEL 2 ============ -->
+  <rect x="760" y="420" width="620" height="280" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="1.8"/>
+  <text x="784" y="450" font-size="15.5" font-weight="bold" fill="#7c2d12">Deployment 2 · vllm-qwen3-8b-p2 — phase-2 pool (262k)</text>
+  <text x="784" y="470" font-size="12" fill="#334155">Ascend 910B3 (64 GB HBM) nodes · 4 pods × TP=4 — long-context pool</text>
+
+  <g font-size="11">
+    <rect x="784"  y="486" width="132" height="56" rx="6" fill="#ffffff" stroke="#fdba74"/>
+    <text x="850"  y="505" text-anchor="middle" font-weight="bold" fill="#1e293b">pod-1</text>
+    <text x="850"  y="521" text-anchor="middle" fill="#475569">TP=4 · 4 NPUs</text>
+    <text x="850"  y="535" text-anchor="middle" fill="#475569">vLLM + kv-sidecar</text>
+
+    <rect x="928" y="486" width="132" height="56" rx="6" fill="#ffffff" stroke="#fdba74"/>
+    <text x="994"  y="505" text-anchor="middle" font-weight="bold" fill="#1e293b">pod-2</text>
+    <text x="994"  y="521" text-anchor="middle" fill="#475569">TP=4 · 4 NPUs</text>
+    <text x="994"  y="535" text-anchor="middle" fill="#475569">vLLM + kv-sidecar</text>
+
+    <rect x="1072" y="486" width="132" height="56" rx="6" fill="#ffffff" stroke="#fdba74"/>
+    <text x="1138" y="505" text-anchor="middle" font-weight="bold" fill="#1e293b">pod-3</text>
+    <text x="1138" y="521" text-anchor="middle" fill="#475569">TP=4 · 4 NPUs</text>
+    <text x="1138" y="535" text-anchor="middle" fill="#475569">vLLM + kv-sidecar</text>
+
+    <rect x="1216" y="486" width="132" height="56" rx="6" fill="#ffffff" stroke="#fdba74"/>
+    <text x="1282" y="505" text-anchor="middle" font-weight="bold" fill="#1e293b">pod-4</text>
+    <text x="1282" y="521" text-anchor="middle" fill="#475569">TP=4 · 4 NPUs</text>
+    <text x="1282" y="535" text-anchor="middle" fill="#475569">vLLM + kv-sidecar</text>
+  </g>
+
+  <!-- spec block 2 -->
+  <rect x="784" y="556" width="572" height="124" rx="8" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="804" y="582" font-size="13.5" font-weight="bold" fill="#7c2d12">Model: Qwen3.8-27B (hostPath /data/models)</text>
+  <text x="804" y="606" font-size="12" fill="#334155">max-model-len 262,144 · max-num-seqs 8</text>
+  <text x="804" y="626" font-size="12" fill="#334155">MTP speculative decoding ×3 · prefix caching</text>
+  <text x="804" y="646" font-size="12" fill="#334155">reasoning-parser qwen3 (thinking budget) · served as: qwen3.8-27b-262k</text>
+  <text x="804" y="666" font-size="12" fill="#334155">sidecar auto-repair: clamps max_tokens on context-400</text>
+
+  <!-- monitoring -->
+  <line x1="370" y1="700" x2="520" y2="742" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#ad)"/>
+  <line x1="1070" y1="700" x2="900" y2="742" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#ad)"/>
+  <text x="560" y="730" font-size="11" fill="#64748b">/metrics (PodMonitor)</text>
+
+  <rect x="420" y="744" width="330" height="72" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="585" y="772" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#065f46">Prometheus :30900</text>
+  <text x="585" y="794" text-anchor="middle" font-size="11" fill="#334155">scrapes vLLM · kv-sidecar · kv-router · NPU exporter</text>
+
+  <rect x="790" y="744" width="250" height="72" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="915" y="772" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#065f46">Grafana :30300</text>
+  <text x="915" y="794" text-anchor="middle" font-size="11" fill="#334155">sir-llm-platform dashboard (ConfigMap-fed)</text>
+
+  <text x="720" y="842" text-anchor="middle" font-size="11" fill="#64748b">Same Qwen3.8-27B weights, two hardware pools — one gateway, pick the pool with the model name in the request.</text>
+</svg>
