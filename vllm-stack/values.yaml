@@ -104,7 +104,7 @@ router:
 # kv-sidecar (one per vLLM pod)
 sidecar:
   enabled: true
-  imageTag: "cc0b976d"   # llm-la-icbc build tag (paired with router); never :latest — arm64 build d0eec27a ready, roll in phase 2
+  imageTag: "7f52ac0a"   # llm-la-icbc 7f52ac0: context-400 repair now clamps max_completion_tokens too (deterministic 1-token overflow storm fix)
   imagePullPolicy: IfNotPresent   # ghcr direct egress available (see router note above)
   streamingMode: true
 
