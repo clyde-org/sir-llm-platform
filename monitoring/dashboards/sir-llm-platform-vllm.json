@@ -76,7 +76,7 @@
           "editor": false
         }
       ],
-      "description": "Incoming OpenAI API traffic. 4xx = 581k cumulative — watch this closely."
+      "description": "Incoming OpenAI API traffic. 4xx = 581k cumulative \u2014 watch this closely."
     },
     {
       "type": "timeseries",
@@ -1256,7 +1256,7 @@
         {
           "refId": "A",
           "legendFormat": "{{pod}}-avg",
-          "expr": "label_replace((sum by(pod) (rate(vllm:time_to_first_token_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum by(pod) (rate(vllm:time_to_first_token_seconds_count{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((sum by(pod) (rate(vllm:time_to_first_token_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum by(pod) (rate(vllm:time_to_first_token_seconds_count{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "editor": false,
           "datasource": {
             "type": "prometheus",
@@ -1266,7 +1266,7 @@
         {
           "refId": "B",
           "legendFormat": "{{pod}}-p99",
-          "expr": "label_replace((histogram_quantile(0.99, sum by(pod,le) (rate(vllm:time_to_first_token_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((histogram_quantile(0.99, sum by(pod,le) (rate(vllm:time_to_first_token_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "editor": false,
           "datasource": {
             "type": "prometheus",
@@ -1424,7 +1424,7 @@
         {
           "refId": "A",
           "legendFormat": "{{pod}}-avg",
-          "expr": "label_replace((sum by(pod) (rate(vllm:inter_token_latency_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum by(pod) (rate(vllm:inter_token_latency_seconds_count{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((sum by(pod) (rate(vllm:inter_token_latency_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum by(pod) (rate(vllm:inter_token_latency_seconds_count{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "editor": false,
           "datasource": {
             "type": "prometheus",
@@ -1434,7 +1434,7 @@
         {
           "refId": "B",
           "legendFormat": "{{pod}}-p99",
-          "expr": "label_replace((histogram_quantile(0.99, sum by(pod,le) (rate(vllm:inter_token_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((histogram_quantile(0.99, sum by(pod,le) (rate(vllm:inter_token_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "editor": false,
           "datasource": {
             "type": "prometheus",
@@ -1592,7 +1592,7 @@
         {
           "refId": "A",
           "legendFormat": "{{pod}}-avg",
-          "expr": "label_replace((sum by(pod) (rate(vllm:e2e_request_latency_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum by(pod) (rate(vllm:e2e_request_latency_seconds_count{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((sum by(pod) (rate(vllm:e2e_request_latency_seconds_sum{namespace=\"sir-llm-platform\"}[5m])) / sum by(pod) (rate(vllm:e2e_request_latency_seconds_count{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "editor": false,
           "datasource": {
             "type": "prometheus",
@@ -1602,7 +1602,7 @@
         {
           "refId": "B",
           "legendFormat": "{{pod}}-p99",
-          "expr": "label_replace((histogram_quantile(0.99, sum by(pod,le) (rate(vllm:e2e_request_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((histogram_quantile(0.99, sum by(pod,le) (rate(vllm:e2e_request_latency_seconds_bucket{namespace=\"sir-llm-platform\"}[5m])))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "editor": false,
           "datasource": {
             "type": "prometheus",
@@ -1750,7 +1750,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace((sum by(pod) (rate(vllm:generation_tokens_total{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((sum by(pod) (rate(vllm:generation_tokens_total{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "legendFormat": "{{pod}}",
           "refId": "A",
           "datasource": {
@@ -1760,7 +1760,7 @@
           "editor": false
         }
       ],
-      "description": "Rebalancing signal — uneven bars mean the router is not spreading load."
+      "description": "Rebalancing signal \u2014 uneven bars mean the router is not spreading load."
     },
     {
       "type": "timeseries",
@@ -1808,7 +1808,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace((sum by(pod) (vllm:num_requests_running{namespace=\"sir-llm-platform\"})), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((sum by(pod) (vllm:num_requests_running{namespace=\"sir-llm-platform\"})), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "legendFormat": "{{pod}}",
           "refId": "A",
           "datasource": {
@@ -1867,7 +1867,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace((sum by(pod) (max by(pod,engine) (vllm:kv_cache_usage_perc{namespace=\"sir-llm-platform\"}))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((sum by(pod) (max by(pod,engine) (vllm:kv_cache_usage_perc{namespace=\"sir-llm-platform\"}))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "legendFormat": "{{pod}}",
           "refId": "A",
           "datasource": {
@@ -1926,7 +1926,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace((sum by(pod) (rate(vllm:request_success_total{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((sum by(pod) (rate(vllm:request_success_total{namespace=\"sir-llm-platform\"}[5m]))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "legendFormat": "{{pod}}",
           "refId": "A",
           "datasource": {
@@ -2527,7 +2527,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace((sum by(pod) (max by(pod) (vllm:engine_sleep_state{namespace=\"sir-llm-platform\"}))), \"pod\", \"$1\", \"pod\", \".*-([a-z0-9]{5})$\")",
+          "expr": "label_replace((sum by(pod) (max by(pod) (vllm:engine_sleep_state{namespace=\"sir-llm-platform\"}))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
           "legendFormat": "{{pod}}",
           "refId": "A",
           "datasource": {
@@ -2541,12 +2541,142 @@
     },
     {
       "type": "row",
-      "title": "NPU hardware (2 deployment nodes)",
+      "title": "Serving pod resources (CPU / memory)",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
         "y": 142
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU usage per pod (cores)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 143
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none"
+            },
+            "axisPlacement": "auto",
+            "scaleDistribution": "linear"
+          },
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace((sum by(pod) (rate(container_cpu_usage_seconds_total{namespace=\"sir-llm-platform\",container!=\"\",container!=\"POD\"}[5m]))), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
+          "legendFormat": "{{pod}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editor": false
+        }
+      ],
+      "description": "CPU per serving pod (vllm + kv-sidecar), in cores (1.0 = 1 full core). A spike with flat NPU util = tokenization / thread churn, not inference."
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory usage per pod (GB)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 143
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none"
+            },
+            "axisPlacement": "auto",
+            "scaleDistribution": "linear"
+          },
+          "min": 0,
+          "unit": "gbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace((sum by(pod) (container_memory_working_set_bytes{namespace=\"sir-llm-platform\",container!=\"\",container!=\"POD\"})), \"pod\", \"$1-$2\", \"pod\", \"^(.+?)-.*-([a-z0-9]{5})$\")",
+          "legendFormat": "{{pod}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editor": false
+        }
+      ],
+      "description": "Working set per pod (vllm + kv-sidecar). Rises with max-model-len / prefix cache; a slow climb across all pods = leak."
+    },
+    {
+      "type": "row",
+      "title": "NPU hardware (2 deployment nodes)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 151
       },
       "collapsed": false,
       "panels": []
@@ -2562,7 +2692,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 143
+        "y": 152
       },
       "fieldConfig": {
         "defaults": {
@@ -2622,7 +2752,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 143
+        "y": 152
       },
       "fieldConfig": {
         "defaults": {
@@ -2641,7 +2771,7 @@
             "scaleDistribution": "linear"
           },
           "min": 0,
-          "unit": "Mbytes"
+          "unit": "gbytes"
         },
         "overrides": []
       },
@@ -2658,7 +2788,7 @@
       },
       "targets": [
         {
-          "expr": "npu_chip_info_hbm_used_memory{instance=~\"$npu_node\"}",
+          "expr": "npu_chip_info_hbm_used_memory{instance=~\"$npu_node\"} / 1024",
           "legendFormat": "{{instance}}:chip{{id}} used",
           "refId": "A",
           "datasource": {
@@ -2668,7 +2798,7 @@
           "editor": false
         },
         {
-          "expr": "npu_chip_info_hbm_total_memory{instance=~\"$npu_node\"}",
+          "expr": "npu_chip_info_hbm_total_memory{instance=~\"$npu_node\"} / 1024",
           "legendFormat": "{{instance}}:chip{{id}} total",
           "refId": "B",
           "datasource": {
@@ -2690,7 +2820,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 151
+        "y": 160
       },
       "fieldConfig": {
         "defaults": {
@@ -2747,7 +2877,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 151
+        "y": 160
       },
       "fieldConfig": {
         "defaults": {
@@ -2805,7 +2935,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 159
+        "y": 168
       },
       "fieldConfig": {
         "defaults": {
@@ -2866,7 +2996,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 159
+        "y": 168
       },
       "fieldConfig": {
         "defaults": {
