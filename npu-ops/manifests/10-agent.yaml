@@ -1,0 +1,71 @@
+# npu-node-agent: per-node dummy-load control (privileged, hostPID, hostNetwork)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: npu-node-agent
+  namespace: npu-ops
+  labels:
+    app: npu-node-agent
+spec:
+  selector:
+    matchLabels:
+      app: npu-node-agent
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: npu-node-agent
+    spec:
+      nodeSelector:
+        accelerator: huawei-Ascend910   # present on all 16 NPU nodes
+      imagePullSecrets:
+        - name: ghcr-fanbondi
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+        - operator: Exists              # run everywhere on NPU nodes, incl. control-plane
+      containers:
+        - name: agent
+          image: ghcr.io/fanbondi/npu-ops-agent:v1-b9991056
+          imagePullPolicy: Always
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: NPU_DUMMY_PCT
+              value: "90"
+          ports:
+            - name: http
+              containerPort: 8083
+              protocol: TCP
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi   # CANN runtime probes (child of agent) can spike
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+            - name: state
+              mountPath: /var/lib/npu-ops
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+        - name: state
+          hostPath:
+            path: /var/lib/npu-ops
+            type: DirectoryOrCreate

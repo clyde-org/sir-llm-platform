@@ -63,9 +63,11 @@ flowchart TD
 
 ## Quick start
 
-One base URL for everything: **`http://<NODE_IP>:30400`** (any cluster node)
-with the shared lab key **`sk-qwen38b-local`**. Pick a pool
-via the `model` field: `qwen3.8-27b` (131k, default) or
+One base URL for everything: **`http://<NODE_IP>:30400`** (any cluster node).
+Get your own API key at **`http://<NODE_IP>:30410/keys`** (self-service,
+admin-approved in seconds — see [API keys](#api-keys-per-user)); the shared
+lab master key `sk-qwen38b-local` still works but is for admin/infra use.
+Pick a pool via the `model` field: `qwen3.8-27b` (131k, default) or
 `qwen3.8-27b-262k` (262k, long context). Standard `openai` / `anthropic`
 SDKs work as-is (`base_url=…:30400/v1` and `…:30400` respectively).
 
@@ -206,6 +208,58 @@ Exact `~/.pi/agent/settings.json`:
   with `prompt is too long`.
 - `models.json` is reloaded when you open `/model` in a session — live-edit
   without restart.
+
+## API keys (per-user)
+
+Everyone gets their own LiteLLM **virtual key** — no more one shared lab key.
+Managed in the **npu-ops** dashboard, **API keys** tab:
+**`http://<NODE_IP>:30410/keys`**.
+
+1. **Request** — fill in your Huawei ID / username (no spaces — it becomes the
+   key's `user_id`), full name, team, and optionally restrict the key to
+   specific models (`qwen3.8-27b`, `-131k`, `-262k`). No login needed.
+2. **Approve** — an admin approves pending requests (⚙️ admin login, bottom
+   right). On approval the key is generated in LiteLLM and shown **once** in
+   a modal — copy it then; afterwards only its hash is kept.
+3. **Use it** — wherever the shared key used to go: `Authorization: Bearer
+   <key>` against `http://<NODE_IP>:30400/v1` (OpenAI) or `:30400`
+   (Anthropic `/v1/messages`) — i.e. replace `sk-qwen38b-local` in
+   `models.json` / `settings.json` / SDK clients.
+4. **Track / revoke** — "track your keys" on the same page (by Huawei ID, no
+   login) shows request counts, token counts and last active per key; an
+   admin blocks a key with one click. Per-key usage is read straight from
+   LiteLLM's Postgres. Full spec (auth model, password rotation, REST API):
+   [`npu-ops/README.md`](npu-ops/README.md).
+
+The master key `sk-qwen38b-local` remains valid for admin/infra (LiteLLM
+admin UI, monitoring service monitors, chart defaults).
+
+## Who is sending requests (LiteLLM observability)
+
+With per-user virtual keys (above), the LiteLLM admin UI attributes every
+request to its owner. For shared/legacy clients on the master key, attribution
+comes from source IP + user-agent, captured per request in two places:
+
+- **Grafana** — `http://<NODE_IP>:30300/d/sir-llm-platform-vllm`, row
+  **Client requests (LiteLLM gateway)**: rate by IP × agent, per-agent rate,
+  requests by IP × status code, failures by client, 24h totals per client,
+  token throughput per model. `client_ip` is the pod IP for in-cluster
+  clients — map it back with `kubectl get pods -A -o wide | grep <ip>`.
+- **CLI (no browser)** — `python3 scripts/track-requests.py [--since 2h | --tail]`
+  summarizes the gateway's access log by client IP, with a live-tail mode.
+- **LiteLLM admin UI** — `http://<NODE_IP>:30400/ui`, login `admin` /
+  `sk-qwen38b-local`. The **Requests** page shows every request with
+  requester IP, user-agent, model, tokens, cost and status; **Spend** tracks
+  totals. Backed by the Postgres deployed with the stack
+  (`vllm-stack/templates/10-postgres.yaml`, static local PV on the
+  control-plane node). One-time step before the first deploy: create
+  `/data/litellm-db` on the control-plane node (local PVs don't create the
+  path). Note: `allow_requests_on_db_unavailable: false` — while Postgres is
+  down the gateway refuses LLM requests rather than serving untracked.
+
+For services that must share a key, give each client/service its own
+User-Agent; individual users should just use their own virtual key (above),
+which is the cleanest attribution.
 
 ---
 

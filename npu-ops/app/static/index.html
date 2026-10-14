@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NPU Ops</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --card2: #1c2330; --line: #30363d;
+    --txt: #e6edf3; --dim: #8b949e;
+    --free: #2ea043; --busy: #388bfd; --dummy: #d29922; --orphan: #f85149;
+    --mixed: #a371f7; --unknown: #6e7681;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--txt);
+         font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  a { color: var(--busy); text-decoration: none; }
+  header { position: sticky; top: 0; z-index: 5; background: rgba(13,17,23,.95);
+           backdrop-filter: blur(4px); border-bottom: 1px solid var(--line);
+           padding: 10px 18px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  header h1 { font-size: 16px; margin: 0; }
+  header h1 a { color: var(--txt); font-weight: 700; }
+  header h1 span { color: var(--dim); font-weight: 400; font-size: 12px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { padding: 2px 10px; border-radius: 20px; font-size: 12px; cursor: pointer;
+          border: 1px solid var(--line); color: var(--dim); background: var(--card); }
+  .chip.on { color: var(--txt); border-color: var(--txt); }
+  .chip b { font-variant-numeric: tabular-nums; }
+  #search { margin-left: auto; background: var(--card); color: var(--txt);
+            border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; width: 220px; }
+  #meta { font-size: 12px; color: var(--dim); }
+  main { padding: 16px 18px; }
+  #grid { display: grid; gap: 14px;
+         grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .card-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .6px; padding: 3px 9px;
+           border-radius: 5px; color: #fff; }
+  .node { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+          font-weight: 600; word-break: break-all; }
+  .ip { color: var(--dim); font-size: 12px; font-family: ui-monospace, monospace; }
+  .tag { font-size: 11px; color: var(--dim); border: 1px solid var(--line);
+         padding: 1px 7px; border-radius: 10px; }
+  .owners { display: flex; gap: 6px; flex-wrap: wrap; min-height: 20px; }
+  .owner { font-size: 12px; padding: 1px 9px; border-radius: 12px; background: var(--card2);
+           border: 1px solid var(--line); }
+  .owner.dummy { border-color: var(--dummy); color: var(--dummy); }
+  .owner.unlabeled { border-color: var(--orphan); color: var(--orphan); }
+  .owner.real { color: var(--free); }
+  .tagchip { font-size: 12px; padding: 1px 9px; border-radius: 12px; cursor: pointer;
+             background: rgba(163,113,247,.12); border: 1px solid var(--mixed); color: var(--mixed);
+             font-family: ui-monospace, monospace; }
+  .tagchip:hover { border-color: #ff7b72; color: #ff7b72; }
+  #tagadd { font-size: 11px; padding: 1px 8px; color: var(--dim); border-style: dashed; }
+  .dockers { font-size: 11px; color: var(--dummy); cursor: help; }
+  .npus { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .npu { background: var(--card2); border: 1px solid var(--line); border-radius: 7px;
+         padding: 6px 7px; font-size: 11px; position: relative; overflow: hidden; }
+  .npu .id { font-weight: 700; font-size: 11px; display: flex; justify-content: space-between; }
+  .npu .mem { color: var(--dim); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .npu .bar { height: 4px; border-radius: 2px; background: #21262d; margin-top: 5px; }
+  .npu .bar i { display: block; height: 100%; border-radius: 2px; }
+  .npu .who { color: var(--dim); margin-top: 4px; font-size: 10px;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pods { display: flex; flex-direction: column; gap: 4px; }
+  .pod { display: flex; gap: 8px; align-items: baseline; font-size: 12px;
+         font-family: ui-monospace, monospace; }
+  .pod .ph { font-size: 10px; padding: 0 6px; border-radius: 8px; }
+  .pod .ph.Running { background: rgba(46,160,67,.15); color: var(--free); }
+  .pod .ph.Pending { background: rgba(210,153,34,.15); color: var(--dummy); }
+  .pod .dv { color: var(--dim); }
+  .foot { display: flex; justify-content: space-between; align-items: center;
+          border-top: 1px solid var(--line); padding-top: 9px; gap: 8px; flex-wrap: wrap; }
+  .meta2 { font-size: 11px; color: var(--dim); display: flex; gap: 12px; flex-wrap: wrap; }
+  .btns { display: flex; gap: 8px; }
+  button { font: inherit; font-size: 12px; font-weight: 600; padding: 5px 13px;
+           border-radius: 6px; border: 1px solid var(--line); cursor: pointer;
+           background: var(--card2); color: var(--txt); }
+  button.load { border-color: var(--dummy); color: var(--dummy); }
+  button.stop { border-color: var(--orphan); color: var(--orphan); }
+  button:disabled { opacity: .35; cursor: default; }
+  #toast { position: fixed; bottom: 18px; right: 18px; z-index: 9; display: flex;
+           flex-direction: column; gap: 8px; }
+  .toast { background: var(--card2); border: 1px solid var(--line); border-left: 4px solid var(--busy);
+           padding: 10px 14px; border-radius: 8px; font-size: 13px; max-width: 380px;
+           animation: slidein .18s ease-out; }
+  .toast.err { border-left-color: var(--orphan); }
+  .toast.ok { border-left-color: var(--free); }
+  @keyframes slidein { from { transform: translateX(30px); opacity: 0; } }
+  #actions { grid-column: 1 / -1; background: var(--card); border: 1px solid var(--line);
+             border-radius: 10px; padding: 10px 16px; }
+  #actions h3 { margin: 0 0 6px; font-size: 12px; color: var(--dim);
+                text-transform: uppercase; letter-spacing: .8px; }
+  #actions ul { margin: 0; padding: 0; list-style: none; font-size: 12px; }
+  #actions li { padding: 3px 0; border-bottom: 1px dashed #21262d; color: var(--dim); }
+  #actions li b { color: var(--txt); font-weight: 600; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+  .dot.ok { background: var(--free); } .dot.bad { background: var(--orphan); }
+  /* ---- nav tabs ---- */
+  .tabs { display: flex; gap: 6px; }
+  .tbtn { font-size: 12px; padding: 4px 14px; border-radius: 6px; border: 1px solid var(--line);
+          background: transparent; color: var(--dim); font-weight: 600; }
+  .tbtn.on { background: var(--card); color: var(--txt); border-color: var(--txt); }
+  .tbtn .pend { display: none; background: var(--orphan); color: #fff; font-size: 10px;
+                font-weight: 700; border-radius: 8px; padding: 0 5px; margin-left: 5px; }
+  .tbtn .pend.on { display: inline-block; }
+  #whoami { margin-left: auto; display: flex; gap: 8px; align-items: center; font-size: 12px;
+            color: var(--dim); }
+  #whoami .adm { color: var(--free); font-weight: 700; }
+  /* ---- home portal ---- */
+  .home { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 430px));
+          gap: 16px; padding: 34px 18px; max-width: 1020px; margin: 0 auto; }
+  .homecard { display: block; background: var(--card); border: 1px solid var(--line);
+              border-radius: 12px; padding: 20px 22px; color: var(--txt); text-decoration: none; }
+  .homecard:hover { border-color: var(--busy); }
+  .homecard h2 { margin: 0 0 8px; font-size: 18px; }
+  .homecard p { color: var(--dim); font-size: 13px; margin: 0 0 14px; }
+  .hc-top { display: flex; justify-content: space-between; align-items: center; }
+  .lock { font-size: 11px; color: var(--dummy); border: 1px solid var(--dummy);
+          padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .pub { font-size: 11px; color: var(--free); border: 1px solid var(--free);
+         padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .hc-go { color: var(--busy); font-size: 13px; font-weight: 600; }
+  /* ---- login box ---- */
+  .loginbox { max-width: 430px; margin: 60px auto; background: var(--card);
+              border: 1px solid var(--line); border-radius: 12px; padding: 26px 28px;
+              text-align: center; }
+  .loginbox h2 { margin: 0 0 6px; font-size: 16px; }
+  .loginbox input { background: var(--bg); border: 1px solid var(--line); color: var(--txt);
+                    border-radius: 6px; padding: 7px 10px; font: inherit; font-size: 13px; width: 220px; }
+  .loginbox .err { color: var(--orphan); font-size: 12px; margin-top: 8px; min-height: 14px; }
+  /* ---- API keys tab ---- */
+  .kpanel { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+            padding: 14px 16px; margin-bottom: 14px; }
+  .kpanel h3 { margin: 0 0 10px; font-size: 12px; color: var(--dim);
+               text-transform: uppercase; letter-spacing: .8px; }
+  .kform { display: flex; flex-direction: column; gap: 10px; }
+  .krow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .kform input, .kform select { background: var(--bg); border: 1px solid var(--line);
+        color: var(--txt); border-radius: 6px; padding: 6px 9px; font: inherit; font-size: 13px; }
+  .kform input:focus, .kform select:focus { outline: none; border-color: var(--busy); }
+  .mopts { display: flex; gap: 14px; flex-wrap: wrap; }
+  .mopt { font-size: 13px; color: var(--dim); cursor: pointer; user-select: none; }
+  .mopt input { vertical-align: middle; margin-right: 4px; }
+  .mopt:has(input:checked) { color: var(--txt); }
+  table.kt { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.kt th { text-align: left; font-size: 11px; color: var(--dim); text-transform: uppercase;
+                letter-spacing: .5px; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  table.kt td { padding: 7px 8px; border-bottom: 1px dashed #21262d; vertical-align: top; }
+  table.kt tr.hist td { color: var(--dim); font-size: 12px; }
+  .kmono { font-family: ui-monospace, monospace; font-size: 12px; }
+  .kstat { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .kstat.active { background: rgba(46,160,67,.15); color: var(--free); }
+  .kstat.blocked, .kstat.rejected { background: rgba(248,81,73,.15); color: var(--orphan); }
+  .kstat.pending, .kstat.approved { background: rgba(210,153,34,.15); color: var(--dummy); }
+  button.ok { border-color: var(--free); color: var(--free); }
+  button.warn { border-color: var(--busy); color: var(--busy); }
+  .dim { color: var(--dim); }
+  .kdet { display: flex; gap: 28px; flex-wrap: wrap; padding: 12px 4px; align-items: flex-end; }
+  .dbars { display: flex; gap: 3px; align-items: flex-end; height: 72px; margin-top: 6px; }
+  .dbar { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; max-width: 26px; }
+  .dbar i { width: 100%; background: var(--busy); border-radius: 2px 2px 0 0; display: block; }
+  .dbar span { font-size: 9px; color: var(--dim); }
+  #keymodal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; z-index: 50;
+              align-items: center; justify-content: center; }
+  #keymodal .box { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+                   padding: 20px 24px; max-width: 580px; }
+  #keymodal .box h3 { margin: 0 0 4px; }
+  #keymodal .keytext { font-family: ui-monospace, monospace; background: var(--bg);
+                       border: 1px solid var(--line); border-radius: 6px; padding: 10px;
+                       word-break: break-all; font-size: 13px; margin: 10px 0; }
+  /* ---- light theme ---- */
+  html[data-theme="light"] {
+    --bg: #f6f8fa; --card: #ffffff; --card2: #eef1f5; --line: #d0d7de;
+    --txt: #1f2328; --dim: #57606a;
+  }
+  html[data-theme="light"] header { background: rgba(246,248,250,.95); }
+  html[data-theme="light"] .npu .bar { background: #d0d7de; }
+  html[data-theme="light"] #actions li { border-color: #d8dee4; }
+  html[data-theme="light"] .card, html[data-theme="light"] .npu,
+  html[data-theme="light"] .kpanel, html[data-theme="light"] .homecard {
+    box-shadow: 0 1px 2px rgba(31,35,40,.08); }
+  #gearbtn { position: fixed; bottom: 18px; right: 18px; z-index: 8; width: 46px; height: 46px;
+             border-radius: 50%; font-size: 20px; padding: 0; display: none;
+             background: var(--card); border: 1px solid var(--line); cursor: pointer;
+             box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  #toast { bottom: 76px; }  /* keep clear of the gear button */
+</style>
+<script>
+  // set theme before first paint (no flash)
+  document.documentElement.setAttribute("data-theme", (function () {
+    try { return localStorage.getItem("npuops_theme") || "dark"; } catch (e) { return "dark"; }
+  })());
+</script>
+</head>
+<body>
+<div id="stalebar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99;
+  background:#f85149;color:#fff;text-align:center;padding:8px;font-weight:600;
+  cursor:pointer" onclick="location.reload(true)">
+  ⚠ This page is an old version — click to reload (or it will reload in 5s)
+</div>
+<header>
+  <h1><a href="/">NPU Ops</a> <span id="meta"></span></h1>
+  <div class="tabs">
+    <button class="tbtn" data-route="/">Home</button>
+    <button class="tbtn" data-route="/npus">NPU Fleet</button>
+    <button class="tbtn" data-route="/keys">API Keys<span class="pend" id="kpendbadge"></span></button>
+  </div>
+  <button class="tbtn" id="themebtn" onclick="toggleTheme()" title="toggle light/dark theme">☀️</button>
+  <span id="whoami"></span>
+</header>
+
+<!-- ============ HOME ============ -->
+<main id="view-home" style="display:none">
+  <div class="home">
+    <a class="homecard" href="/npus">
+      <div class="hc-top"><h2>NPU Fleet</h2><span class="lock">🔒 password</span></div>
+      <p>Per-server NPU status (FREE / BUSY / DUMMY / ORPHAN), dummy load start/stop,
+         node tags, recent actions. Admin only.</p>
+      <span class="hc-go">open →</span>
+    </a>
+    <a class="homecard" href="/keys">
+      <div class="hc-top"><h2>API Keys</h2><span class="pub">no password to apply</span></div>
+      <p>Request a key to access the models and track your own usage (requests,
+         tokens, per model) any time. Admin approves requests.</p>
+      <span class="hc-go">open →</span>
+    </a>
+  </div>
+</main>
+
+<!-- ============ NPUs (admin) ============ -->
+<main id="view-npus" style="display:none">
+  <div id="npu-login" style="display:none"></div>
+  <div id="npu-content" style="display:none">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <div class="chips" id="chips"></div>
+      <input id="search" placeholder="filter node / owner / pod…" autocomplete="off">
+    </div>
+    <div id="grid"></div>
+  </div>
+</main>
+
+<!-- ============ API KEYS ============ -->
+<main id="view-keys" style="display:none">
+  <section class="kpanel">
+    <h3>1 · request a model API key</h3>
+    <div class="kform">
+      <div class="krow">
+        <input id="kowner" placeholder="Huawei ID / username (required, no spaces)" style="width:270px">
+        <input id="kfullname" placeholder="full name (required)" style="width:200px">
+        <input id="kteam" placeholder="team (required)" style="width:180px">
+      </div>
+      <div class="mopts" id="kmodels"></div>
+      <div><button class="ok" onclick="submitApply()">submit request</button>
+           <span class="dim" style="font-size:11px">an admin approves it, then your key appears in “track your keys” below</span></div>
+    </div>
+  </section>
+  <section class="kpanel">
+    <h3>2 · track your keys</h3>
+    <div class="krow" style="margin-bottom:10px">
+      <input id="trackowner" placeholder="your Huawei ID / username (any casing)" style="width:320px">
+      <button class="warn" onclick="trackKeys()">show my keys</button>
+      <span class="dim" style="font-size:11px">no password needed — keys are listed by your Huawei ID</span>
+    </div>
+    <div id="mykeys"></div>
+  </section>
+  <section class="kpanel" id="kadmin-panel" style="display:none">
+    <h3>3 · admin — approvals &amp; all keys</h3>
+    <div id="kadmin-content" style="display:none">
+      <div id="kpend" style="margin-bottom:14px"></div>
+      <div id="ktot" class="dim" style="margin-bottom:8px;font-size:13px"></div>
+      <div id="kkeys"></div>
+      <div id="kerr" style="color:var(--orphan);font-size:12px;margin-top:8px"></div>
+    </div>
+  </section>
+</main>
+
+<div id="keymodal" onclick="if(event.target===this)hideKeyModal()">
+  <div class="box">
+    <h3>Virtual key for <span id="km-owner"></span></h3>
+    <div class="dim" style="font-size:12px">models: <span id="km-models"></span></div>
+    <div class="keytext" id="km-key"></div>
+    <div style="font-size:12px;color:var(--orphan)">
+      ⚠ this is the only time the full key is shown — copy it now.</div>
+    <div class="krow" style="margin-top:12px">
+      <button class="ok" onclick="copyModalKey()">copy key</button>
+      <button onclick="hideKeyModal()">done</button>
+    </div>
+    <div class="dim" style="font-size:11px;margin-top:10px">
+      use as <span class="kmono">Authorization: Bearer &lt;key&gt;</span> against
+      http://&lt;node&gt;:30400/v1 (LiteLLM, OpenAI-compatible).</div>
+  </div>
+</div>
+<button id="gearbtn" onclick="openLoginModal()" title="admin login">⚙️</button>
+<div id="loginmodal" onclick="if(event.target===this)closeLoginModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40;align-items:center;justify-content:center">
+  <div style="width:440px;max-width:92vw">
+    <div id="loginmodal-box"></div>
+    <div style="text-align:right;margin-top:10px"><button onclick="closeLoginModal()">cancel</button></div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+"use strict";
+const UI_VERSION = "8";  // keep in sync with backend UI_VERSION
+const ROUTE = (location.pathname.replace(/\/+$/, "") || "/");
+const VIEW = {"/": "home", "/npus": "npus", "/keys": "keys"}[ROUTE] || "home";
+const STATUS_COLOR = {FREE:"#2ea043", BUSY:"#388bfd", DUMMY:"#d29922",
+                      ORPHAN:"#f85149", MIXED:"#a371f7", UNKNOWN:"#6e7681"};
+const ORDER = ["FREE","BUSY","DUMMY","ORPHAN","MIXED","UNKNOWN"];
+let filter = "ALL", query = "", lastData = null;
+let npuTimer = null;   // NPU poll handle (declared here: router calls initNpus at load)
+// NOTE: all view state must be declared ABOVE the router block below — the router
+// calls initNpus()/initKeys() at script load, and hoisted functions hitting a
+// later `let` would throw a TDZ ReferenceError and kill the whole page.
+let myOwner = localStorage.getItem("npuops_owner") || "";
+let myKeysList = null;          // track-your-keys result
+let adminData = null;           // {applies, keys} for the admin section
+const kDetail = {};             // hash -> {daily, by_model, last_request}
+const kOpen = new Set();        // hashes with the stats row expanded
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const giB = mb => (mb/1024).toFixed(1);
+const ago = ts => { if(!ts) return "?"; const s=(Date.now()/1000-ts)|0;
+  if(s<90) return s+"s ago"; if(s<5400) return (s/60)|0+"m ago";
+  if(s<172800) return (s/3600)|0+"h"+((s%3600)/60|0)+"m ago"; return (s/86400)|0+"d ago"; };
+const durH = s => { s=Math.max(0,s|0); return (s/3600|0)+"h"+((s%3600)/60|0)+"m"; };
+
+function toast(msg, cls) {
+  const el = document.createElement("div");
+  el.className = "toast " + (cls||"");
+  el.textContent = msg;
+  $("#toast").appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+
+function staleCheck(v) {
+  if (v && v !== UI_VERSION && sessionStorage.getItem("staleReloaded") !== v) {
+    document.getElementById("stalebar").style.display = "block";
+    sessionStorage.setItem("staleReloaded", v);
+    setTimeout(() => location.reload(true), 5000);
+  } else if (v === UI_VERSION) {
+    document.getElementById("stalebar").style.display = "none";
+  }
+}
+
+// ---------------- theme (dark default, light optional)
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  try { localStorage.setItem("npuops_theme", t); } catch (e) {}
+  const b = document.getElementById("themebtn");
+  if (b) b.textContent = (t === "light") ? "🌙" : "☀️";
+}
+function toggleTheme() {
+  applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light");
+}
+
+// ---------------- auth (one password -> signed 12h token in localStorage)
+function authToken() { return localStorage.getItem("npuops_token") || ""; }
+function tokenValid(t) {
+  try { return parseInt(t.split(".")[0], 10) > Date.now()/1000 + 10; } catch (e) { return false; }
+}
+function authed() { return tokenValid(authToken()); }
+function authHeaders() { return authed() ? {Authorization: "Bearer " + authToken()} : {}; }
+
+function updateWhoami() {
+  const w = $("#whoami");
+  if (authed()) {
+    w.innerHTML = '<span class="adm">● admin</span>';
+    const b = document.createElement("button");
+    b.textContent = "log out";
+    b.style.cssText = "font-size:11px;padding:2px 9px";
+    b.onclick = () => { localStorage.removeItem("npuops_token"); location.reload(); };
+    w.appendChild(b);
+  } else w.textContent = "";
+  updateGear();
+}
+
+async function tryLogin(pw) {
+  try {
+    const r = await fetch("/api/auth/login", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({password: pw})});
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(b.detail || ("HTTP " + r.status));
+    localStorage.setItem("npuops_token", b.token);
+    return true;
+  } catch (e) { return String(e.message || e); }
+}
+
+function renderLoginBox(el, hint, onSuccess) {
+  // class-scoped (no ids): the login box can exist twice at once (npus inline + gear modal)
+  el.innerHTML = `<div class="loginbox">
+    <h2>🔒 Admin access</h2>
+    <p class="dim" style="font-size:13px;margin:0 0 14px">${hint || "Enter the admin password."}</p>
+    <div class="krow" style="justify-content:center">
+      <input type="password" class="lb-pw" placeholder="admin password" autocomplete="current-password">
+      <button class="ok lb-btn">unlock</button>
+    </div>
+    <div class="err lb-err"></div>
+  </div>`;
+  const pw = el.querySelector(".lb-pw"), btn = el.querySelector(".lb-btn"), err = el.querySelector(".lb-err");
+  const doIt = async () => {
+    const res = await tryLogin(pw.value);
+    if (res === true) { updateWhoami(); onSuccess(); }
+    else { err.textContent = res; pw.select(); }
+  };
+  btn.onclick = doIt;
+  pw.addEventListener("keydown", e => { if (e.key === "Enter") doIt(); });
+  setTimeout(() => pw.focus(), 50);
+}
+
+// ---------------- router
+document.querySelectorAll(".tbtn[data-route]").forEach(b => {
+  b.classList.toggle("on", b.dataset.route === ROUTE);
+  b.onclick = () => { location.href = b.dataset.route; };
+});
+$("#view-" + VIEW).style.display = (VIEW === "home") ? "block" : "block";
+if (VIEW === "npus") initNpus();
+else if (VIEW === "keys") initKeys();
+updateWhoami();
+applyTheme(document.documentElement.getAttribute("data-theme") || "dark");  // sync the toggle icon
+
+// ---------------- NPU view (admin-gated)
+function startNpuPolling() {
+  $("#npu-login").style.display = "none";
+  $("#npu-content").style.display = "block";
+  refreshNpus();  // <-- the grid loads immediately after login, no manual refresh
+  if (!npuTimer) npuTimer = setInterval(refreshNpus, 10000);
+  updateGear();
+}
+function stopNpuPolling() { if (npuTimer) { clearInterval(npuTimer); npuTimer = null; } }
+function showNpuLogin() {
+  stopNpuPolling();
+  $("#npu-login").style.display = "block";
+  $("#npu-content").style.display = "none";
+  renderLoginBox($("#npu-login"),
+    "NPU management is admin-only (node status, load/stop, tags). Enter the password to continue.",
+    startNpuPolling);
+  updateGear();
+}
+function initNpus() {
+  if (!authed()) showNpuLogin(); else startNpuPolling();
+}
+
+async function refreshNpus() {
+  try {
+    const r = await fetch("/api/state", {headers: authHeaders()});
+    if (r.status === 401) { stopNpuPolling(); showNpuLogin(); return; }  // token expired
+    lastData = await r.json();
+    staleCheck(lastData.ui_version);
+    render();
+  } catch (e) { $("#meta").textContent = "· unreachable: " + e; }
+}
+
+async function tag(node, t, remove) {
+  let name;
+  if (remove) {
+    name = t;
+    if (!confirm(`${node}:\n\nremove tag "${t}"?`)) return;
+  } else {
+    name = (prompt(`${node}: tag (a-z 0-9 -)`) || "").trim().toLowerCase();
+    if (!name) return;
+  }
+  try {
+    const r = await fetch(`/api/nodes/${encodeURIComponent(node)}/tags`, {
+      method: "POST", headers: Object.assign({"Content-Type": "application/json"}, authHeaders()),
+      body: JSON.stringify({tag: name, remove}) });
+    const b = await r.json().catch(() => ({}));
+    if (r.ok) { toast(`${node}: tags → ${b.tags.join(", ") || "(none)"}`, "ok"); }
+    else if (r.status === 401) { showNpuLogin(); }
+    else toast(`${node}: tag failed — ${b.detail || b.message || r.status}`, "err");
+    setTimeout(refreshNpus, 400);
+  } catch (e) { toast(`${node}: tag failed — ${e}`, "err"); }
+}
+
+async function act(node, action) {
+  const verb = action === "start" ? "load dummy NPU memory" : "stop dummy load";
+  if (!confirm(`${node}:\n\n${verb} — continue?`)) return;
+  toast(`${node}: ${verb}…`, "");
+  try {
+    const r = await fetch(`/api/nodes/${encodeURIComponent(node)}/dummy/${action}`,
+                          {method: "POST", headers: authHeaders()});
+    const b = await r.json().catch(() => ({}));
+    if (r.ok) toast(`${node}: ${action} ok — ${b.detail || ""}`, "ok");
+    else if (r.status === 401) showNpuLogin();
+    else toast(`${node}: ${action} failed — ${b.detail || r.status}`, "err");
+    setTimeout(refreshNpus, 500);
+  } catch (e) { toast(`${node}: ${action} failed — ${e}`, "err"); }
+}
+
+function npuCell(n, baselineMb) {
+  const c = STATUS_COLOR[n.state] || "#6e7681";
+  const utilW = Math.min(100, n.util || 0);
+  const memW = n.hbm_total_mb ? Math.min(100, 100*n.hbm_used_mb/n.hbm_total_mb) : 0;
+  return `<div class="npu" title="NPU ${esc(n.id)}: ${esc(n.state)}${n.proc_pid?`, host pid ${esc(n.proc_pid)}`:""}">
+    <div class="id"><span>NPU ${esc(n.id)}</span>
+      <span style="color:${c};font-size:10px">${esc(n.state)}</span></div>
+    <div class="mem">${n.hbm_total_mb ? giB(n.hbm_used_mb)+"/"+giB(n.hbm_total_mb)+" GiB" : "n/a"}</div>
+    <div class="bar"><i style="width:${utilW}%;background:var(--busy)"></i></div>
+    <div class="mem" style="margin-top:1px">util ${n.util ?? 0}%</div>
+    <div class="who">${esc(n.owner_pod || (n.state==="FREE"?"free":""))}</div>
+  </div>`;
+}
+
+function card(c) {
+  const col = STATUS_COLOR[c.status] || "#6e7681";
+  const owners = c.owners.map(o =>
+    `<span class="owner ${o==="dummy"?"dummy":(o==="unlabeled"?"unlabeled":"real")}">
+      ${o==="dummy"?"dummy load":"@"+esc(o)}</span>`).join("") ||
+    `<span class="owner">—</span>`;
+  const tags = (c.tags||[]).map(t =>
+    `<span class="tagchip" title="click to remove" onclick="tag('${esc(c.name)}','${esc(t)}',true)">${esc(t)}</span>`
+    ).join("") + `<button id="tagadd" onclick="tag('${esc(c.name)}',null,false)">+ tag</button>`;
+  const docker = (c.docker_containers && c.docker_containers.length)
+    ? `<span class="dockers" title="host-level docker containers (invisible to k8s): ${esc(c.docker_containers.join(", "))}">⚓ docker: ${c.docker_containers.length}</span>` : "";
+  const pods = c.pods.slice(0,6).map(p => {
+    const dvTxt = p.devices === null ? "all NPUs"
+      : (Array.isArray(p.devices) && p.devices.length ? "NPU "+p.devices.join(",")
+      : (p.npu_count ? p.npu_count+"x" : ""));
+    return `<div class="pod"><span class="ph ${esc(p.phase)}">${esc(p.phase)}</span>
+     <span>${esc(p.ns)}/${esc(p.name)}</span>
+     <span class="dv">[${dvTxt}] ${p.age_hours!=null ? " · "+Math.round(p.age_hours)+"h" : ""}</span></div>`;
+  }).join("");
+  const a = c.auto_load;
+  const autoTxt = !c.agent_ok ? "agent off" :
+    !a.enabled ? "auto-load off" :
+    c.dummy.running ? (c.dummy.managed ? "dummy managed" : "dummy (unmanaged)") :
+    (a.eta_minutes!=null ? `auto-load in ${a.eta_minutes>=60?((a.eta_minutes/60|0)+"h"+(a.eta_minutes%60|0)+"m"):a.eta_minutes+"m"}` : "idle "+a.idle_hours+"h / need "+a.threshold_hours+"h");
+  const canLoad = c.agent_ok && !c.dummy.running && c.pods.length===0;
+  const canStop = c.agent_ok && c.dummy.running;
+  return `<div class="card" data-status="${c.status}">
+    <div class="card-top">
+      <span class="badge" style="background:${col}">${c.status}</span>
+      <span class="node" style="cursor:help" title="${esc(c.os_image)}">${esc(c.name)}</span>
+      <span class="ip">${esc(c.ip)}</span>
+      ${c.roles.map(r=>`<span class="tag">${esc(r)}</span>`).join("")}
+      ${c.unschedulable?'<span class="tag" style="border-color:var(--orphan);color:var(--orphan)">unschedulable</span>':""}
+    </div>
+    <div class="owners">${owners} ${tags}</div>
+    <div class="npus">${c.npus.length ? c.npus.map(n=>npuCell(n)).join("")
+        : `<div style="color:var(--dim);font-size:12px;grid-column:1/-1">
+            no NPU metrics${c.exporter_ok?"":" (exporter offline)"}${c.agent_ok?"":", agent offline"}</div>`}</div>
+    ${c.pods.length?`<div class="pods">${pods}</div>`:""}
+    <div class="foot">
+      <div class="meta2">
+        <span><span class="dot ${c.exporter_ok?"ok":"bad"}"></span>exporter</span>
+        <span><span class="dot ${c.agent_ok?"ok":"bad"}"></span>agent</span>
+        ${docker}
+        <span>${autoTxt}</span>
+        ${c.free_since?`<span>free ${durH(Date.now()/1000-c.free_since)}</span>`:""}
+        ${c.dummy.started_at?`<span>dummy since ${ago(c.dummy.started_at)}</span>`:""}
+      </div>
+      <div class="btns">
+        <button class="load" ${canLoad?"":"disabled"} onclick="act('${esc(c.name)}','start')"
+          title="${c.pods.length?"node has NPU pods":"load all 8 NPUs to 90% HBM (managed)"}">Load NPUs</button>
+        <button class="stop" ${canStop?"":"disabled"}
+          onclick="act('${esc(c.name)}','stop')">Stop</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderChips(nodes) {
+  const counts = {ALL: nodes.length};
+  for (const s of ORDER) counts[s] = nodes.filter(n=>n.status===s).length;
+  $("#chips").innerHTML = Object.entries(counts).map(([s,n]) =>
+    `<span class="chip ${s===filter?"on":""}" onclick="setFilter('${s}')">
+      ${s!=="ALL"?`<span style="color:${STATUS_COLOR[s]}">●</span> `:""}${s} <b>${n}</b></span>`).join("");
+}
+
+function setFilter(s) { filter = s; render(); }
+
+function render() {
+  const grid = $("#grid");
+  if (!lastData) { grid.innerHTML = '<div style="color:var(--dim)">loading…</div>'; return; }
+  const nodes = lastData.nodes || [];
+  renderChips(nodes);
+  const q = query.toLowerCase();
+  const shown = nodes.filter(c =>
+    (filter==="ALL" || c.status===filter) &&
+    (!q || (c.name+" "+c.ip+" "+c.owners.join(" ")+" "+(c.tags||[]).join(" ")+" "
+            + (c.docker_containers||[]).join(" ")+" "
+            + c.pods.map(p=>p.ns+"/"+p.name).join(" ")).toLowerCase().includes(q)));
+  shown.sort((a,b) => ORDER.indexOf(a.status)-ORDER.indexOf(b.status) || a.name.localeCompare(b.name));
+  const acts = (lastData.actions||[]).slice(0,15).map(a =>
+    `<li>${new Date(a.ts*1000).toLocaleTimeString()} — <b>${esc(a.node)}</b>:
+      ${esc(a.action)} <span style="color:${a.ok?"var(--free)":"var(--orphan)"}">
+      ${a.ok?"✓":"✗"}</span> ${esc(a.detail||"")} <span style="opacity:.6">(${esc(a.source)})</span></li>`
+    ).join("");
+  grid.innerHTML = shown.map(card).join("") +
+    `<div id="actions"><h3>recent actions</h3>
+     <ul>${acts || "<li style='border:none'>none yet</li>"}</ul></div>` +
+    (shown.length? "":'<div style="color:var(--dim);grid-column:1/-1">no nodes match</div>');
+  $("#meta").textContent =
+    `· ${nodes.length} nodes · auto-load ${lastData.autoload_after_hours}h · ` +
+    `updated ${lastData.generated?new Date(lastData.generated*1000).toLocaleTimeString():"—"}`;
+}
+
+$("#search").addEventListener("input", e => { query = e.target.value; render(); });
+
+// ---------------- API keys view
+function initKeys() {
+  $("#meta").textContent = "";
+  fetch("/api/keys/models").then(r => r.json()).then(d => {
+    $("#kmodels").innerHTML = (d.models || []).map(m =>
+      `<label class="mopt"><input type="checkbox" value="${esc(m)}"> ${esc(m)}</label>`).join("")
+      || '<span class="dim">litellm unreachable — no models listed</span>';
+    staleCheck(d.ui_version);
+  }).catch(() => {});
+  $("#trackowner").value = myOwner;
+  if (myOwner) loadMyKeys();
+  renderAdminSection();
+  setInterval(() => { if (authed()) loadAdmin(); else if (myOwner) loadMyKeys(); }, 30000);
+}
+
+async function loadMyKeys() {
+  const owner = myOwner.trim();
+  if (!owner) return;
+  try {
+    const r = await fetch("/api/keys?owner=" + encodeURIComponent(owner));
+    const d = await r.json();
+    myKeysList = d.keys || [];
+    staleCheck(d.ui_version);
+    renderMyKeys();
+  } catch (e) {}
+}
+
+function renderMyKeys() {
+  const el = $("#mykeys");
+  if (!myKeysList) { el.innerHTML = '<div class="dim">enter your name above to see your keys</div>'; return; }
+  if (!myKeysList.length) {
+    el.innerHTML = `<div class="dim">no keys for “${esc(myOwner)}” yet — request one above (an admin must approve it first)</div>`;
+    return;
+  }
+  el.innerHTML = keyTable(myKeysList, false);
+}
+
+function keyTable(keys, adm) {
+  if (!keys.length) return '<div class="dim">no keys</div>';
+  const tot = keys.reduce((a,k) => ({req:a.req+k.requests, tok:a.tok+k.total_tokens}),
+                           {req:0, tok:0});
+  const rows = keys.map(k => {
+    return `<tr>
+      <td><b>${esc(k.full_name || k.owner)}</b><div class="dim" style="font-size:11px">@${esc(k.owner)}</div>
+          ${k.team ? `<div class="dim" style="font-size:11px">${esc(k.team)}</div>` : ""}</td>
+      <td>${(k.models || []).map(esc).join(", ") || "any"}</td>
+      <td>${k.requests}</td>
+      <td>${k.total_tokens.toLocaleString()} <span class="dim">(${k.prompt_tokens.toLocaleString()}/${k.completion_tokens.toLocaleString()})</span></td>
+      <td>${k.last_active ? ago(k.last_active) : "never"}</td>
+      <td><span class="kstat ${k.blocked ? "blocked" : "active"}">${k.blocked ? "revoked" : "active"}</span></td>
+      <td style="white-space:nowrap">
+        <button class="warn" onclick="toggleDetail('${k.hash}')">stats</button>
+        ${(!k.blocked && adm) ? `<button class="stop" onclick="revokeKey('${k.hash}')">revoke</button>` : ""}
+      </td></tr>` + (kOpen.has(k.hash) ? detailRow(k) : "");
+  }).join("");
+  return `<div class="dim" style="margin-bottom:8px;font-size:13px">
+      ${keys.length} key${keys.length>1?"s":""} ·
+      <b>${tot.req}</b> requests · <b>${tot.tok.toLocaleString()}</b> tokens</div>
+    <table class="kt"><tr><th>user</th><th>models</th>
+      <th>requests</th><th>tokens (in/out)</th><th>last active</th><th>status</th><th></th></tr>
+      ${rows}</table>`;
+}
+
+function detailRow(k) {
+  const det = kDetail[k.hash];
+  if (!det) return '<tr><td colspan="7" class="dim" style="padding:12px">loading stats…</td></tr>';
+  if (det.error) return `<tr><td colspan="7" class="dim" style="padding:12px">${esc(det.error)}</td></tr>`;
+  const max = Math.max(1, ...(det.daily || []).map(x => x.tokens));
+  const bars = (det.daily || []).map(x =>
+    `<div class="dbar" title="${esc(x.date)} — ${x.requests} requests, ${x.tokens} tokens">
+       <i style="height:${Math.max(2, 44 * x.tokens / max)}px"></i><span>${esc(x.date.slice(5))}</span></div>`).join("");
+  const bm = (det.by_model || []).map(m =>
+    `<tr><td>${esc(m.model)}</td><td>${m.requests}</td><td>${m.tokens.toLocaleString()}</td></tr>`).join("");
+  return `<tr><td colspan="7" style="background:var(--card2);border:none">
+    <div class="kdet">
+      <div><b style="font-size:12px;color:var(--dim)">last 30 days</b>
+        <div class="dbars">${bars || '<span class="dim">no usage yet</span>'}</div></div>
+      <div><b style="font-size:12px;color:var(--dim)">by model</b>
+        <table class="kt" style="margin-top:6px;min-width:300px">
+          <tr><th>model</th><th>requests</th><th>tokens</th></tr>
+          ${bm || '<tr><td class="dim">none</td><td></td><td></td></tr>'}</table></div>
+      <div class="dim" style="font-size:12px">last request: ${det.last_request ? esc(det.last_request) : "never"}</div>
+    </div></td></tr>`;
+}
+
+async function toggleDetail(h) {
+  if (kOpen.has(h)) { kOpen.delete(h); renderMyKeys(); if (authed()) { renderApplies(); renderKeyTableAll(); } return; }
+  kOpen.add(h);
+  renderMyKeys(); if (authed()) { renderApplies(); renderKeyTableAll(); }
+  if (!kDetail[h]) {
+    try {
+      const r = await fetch(`/api/keys/${h}/detail`);
+      kDetail[h] = r.ok ? await r.json() : {error: await r.text()};
+    } catch (e) { kDetail[h] = {error: String(e)}; }
+    renderMyKeys(); if (authed()) { renderApplies(); renderKeyTableAll(); }
+  }
+}
+
+async function submitApply() {
+  const owner = $("#kowner").value.trim();
+  const full_name = $("#kfullname").value.trim();
+  const team = $("#kteam").value.trim();
+  if (!owner) { toast("Huawei ID / username is required", "err"); return; }
+  if (!full_name) { toast("full name is required", "err"); return; }
+  if (!team) { toast("team is required", "err"); return; }
+  const body = {
+    owner, full_name, team,
+    models: [...document.querySelectorAll("#kmodels input:checked")].map(i => i.value)
+  };
+  try {
+    const r = await fetch("/api/keys/apply", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) { toast("apply failed — " + (b.detail || r.status), "err"); return; }
+    toast(`request ${b.apply.id} submitted for ${owner} — an admin will approve it`, "ok");
+    $("#kowner").value = ""; $("#kfullname").value = ""; $("#kteam").value = "";
+    // convenience: pre-fill the tracker with the applicant's name
+    $("#trackowner").value = owner;
+    trackKeys();
+  } catch (e) { toast("apply failed — " + e, "err"); }
+}
+
+function trackKeys() {
+  myOwner = $("#trackowner").value.trim();
+  localStorage.setItem("npuops_owner", myOwner);
+  loadMyKeys();
+}
+
+// ---- admin section: hidden for non-admins; the gear (bottom right) opens login
+function renderAdminSection() {
+  const panel = document.getElementById("kadmin-panel");
+  if (authed()) {
+    panel.style.display = "block";
+    $("#kadmin-content").style.display = "block";
+    loadAdmin();
+  } else {
+    panel.style.display = "none";  // no admin panel for logged-out users
+  }
+  updateGear();
+}
+
+function updateGear() {
+  const g = document.getElementById("gearbtn");
+  if (g) g.style.display = authed() ? "none" : "block";
+}
+
+function openLoginModal() {
+  renderLoginBox(document.getElementById("loginmodal-box"),
+    "Admin login — approve / reject requests, revoke keys, open NPU Fleet.",
+    () => {
+      closeLoginModal();
+      updateWhoami();
+      if (VIEW === "keys") renderAdminSection();
+      if (VIEW === "npus") startNpuPolling();
+      toast("logged in — admin access enabled", "ok");
+    });
+  document.getElementById("loginmodal").style.display = "flex";
+}
+function closeLoginModal() { document.getElementById("loginmodal").style.display = "none"; }
+
+async function loadAdmin() {
+  try {
+    const [ka, kk] = await Promise.all([
+      fetch("/api/keys/applies", {headers: authHeaders()}).then(r => r.ok ? r.json() : {applies: []}),
+      fetch("/api/keys", {headers: authHeaders()}).then(r => r.ok ? r.json() : {keys: []})]);
+    if (ka.applies === undefined && kk.keys === undefined) { renderAdminSection(); return; }  // 401
+    adminData = {applies: ka.applies || [], keys: kk.keys || []};
+    staleCheck(kk.ui_version);
+    renderApplies(); renderKeyTableAll(); updateBadge();
+  } catch (e) {}
+}
+
+function renderApplies() {
+  if (!adminData) return;
+  const pend = adminData.applies.filter(a => a.status === "pending");
+  const hist = adminData.applies.filter(a => a.status !== "pending").slice(0, 10);
+  $("#kpend").innerHTML = (pend.length ? `<div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">pending approvals</div>
+    <table class="kt"><tr><th>user</th><th>team</th><th>models</th><th>created</th><th></th></tr>` +
+    pend.map(a => `<tr>
+      <td><b>${esc(a.full_name || a.owner)}</b><div class="dim" style="font-size:11px">@${esc(a.owner)}</div></td>
+      <td>${esc(a.team || "—")}</td>
+      <td>${(a.models || []).map(esc).join(", ") || "any"}</td>
+      <td>${esc(a.created)}</td>
+      <td style="white-space:nowrap">
+        <button class="ok" onclick="approveKey('${a.id}')">approve</button>
+        <button class="stop" onclick="rejectKey('${a.id}')">reject</button>
+      </td></tr>`).join("") + "</table>"
+    : '<div class="dim">no pending applications</div>') +
+    (hist.length ? `<details style="margin-top:8px">
+      <summary class="dim" style="cursor:pointer">recent decisions</summary>
+      <table class="kt" style="margin-top:6px"><tr><th>owner</th><th>status</th><th>decided</th><th>key</th></tr>` +
+      hist.map(a => `<tr class="hist"><td>${esc(a.full_name || a.owner)} <span class="dim">@${esc(a.owner)}</span></td>
+        <td><span class="kstat ${esc(a.status)}">${esc(a.status)}</span></td>
+        <td>${esc(a.decided || "—")}</td>
+        <td class="kmono">${a.key_hash ? a.key_hash.slice(0, 14) + "…" : "—"}</td></tr>`).join("") +
+      "</table></details>" : "");
+}
+
+function renderKeyTableAll() {
+  if (!adminData) return;
+  $("#ktot").textContent = "";
+  $("#kkeys").innerHTML = keyTable(adminData.keys, true);
+}
+
+function updateBadge() {
+  const n = (adminData ? adminData.applies : []).filter(a => a.status === "pending").length;
+  const b = $("#kpendbadge");
+  b.textContent = n; b.classList.toggle("on", n > 0);
+}
+
+async function adminCall(path) {
+  const r = await fetch(path, {method: "POST", headers: authHeaders()});
+  if (r.status === 401) { renderAdminSection(); throw new Error("auth"); }
+  const b = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(b.detail || ("HTTP " + r.status));
+  return b;
+}
+
+async function approveKey(rid) {
+  if (!confirm(`approve ${rid}?\na virtual key will be minted for this user.`)) return;
+  try {
+    const b = await adminCall(`/api/keys/applies/${rid}/approve`);
+    showKeyModal(b.owner, b.full_name, b.plaintext_key, b.models);
+    loadAdmin();
+  } catch (e) { if (e.message !== "auth") toast("approve failed — " + e.message, "err"); }
+}
+
+async function rejectKey(rid) {
+  if (!confirm(`reject application ${rid}?`)) return;
+  try {
+    await adminCall(`/api/keys/applies/${rid}/reject`);
+    toast(`rejected ${rid}`, "ok");
+    loadAdmin();
+  } catch (e) { if (e.message !== "auth") toast("reject failed — " + e.message, "err"); }
+}
+
+async function revokeKey(h) {
+  if (!confirm(`revoke key ${h.slice(0, 14)}… ?\nthe key stops working immediately.`)) return;
+  try {
+    await adminCall(`/api/keys/${h}/revoke`);
+    toast("key revoked", "ok");
+    kOpen.delete(h);
+    loadAdmin();
+  } catch (e) { if (e.message !== "auth") toast("revoke failed — " + e.message, "err"); }
+}
+
+// ---- one-time key reveal modal
+function showKeyModal(owner, fullName, key, models) {
+  $("#km-owner").textContent = fullName ? `${fullName} (@${owner})` : owner;
+  $("#km-key").textContent = key;
+  $("#km-models").textContent = (models || []).join(", ") || "any model";
+  $("#keymodal").style.display = "flex";
+}
+function hideKeyModal() { $("#keymodal").style.display = "none"; }
+async function copyModalKey() {
+  const s = $("#km-key").textContent;
+  let ok = false;
+  try { await navigator.clipboard.writeText(s); ok = true; }
+  catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = s; document.body.appendChild(ta); ta.select();
+    try { ok = document.execCommand("copy"); } catch (_) {}
+    ta.remove();
+  }
+  toast(ok ? "key copied to clipboard" : "copy failed — select the text manually", ok ? "ok" : "err");
+}
+</script>
+</body>
+</html>

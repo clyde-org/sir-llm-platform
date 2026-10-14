@@ -54,7 +54,9 @@ node can't pull from ghcr.io, add the egress-gateway CA:
 ## Other GUI options
 
 Any OpenAI-compatible client works: base URL `http://<NODE_IP>:30400/v1`, key
-`sk-qwen38b-local`.
+= **your own API key** from `http://<NODE_IP>:30410/keys` (self-service,
+admin-approved; see [API keys in the main README](../README.md#api-keys-per-user)).
+The shared lab master key `sk-qwen38b-local` also works.
 
 | GUI | Type | Notes |
 |-----|------|-------|

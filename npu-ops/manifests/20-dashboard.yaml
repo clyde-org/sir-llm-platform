@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: npu-ops
+---
+# NOTE: the npu-ops-tags / npu-ops-keys ConfigMaps are intentionally NOT part
+# of this file — `kubectl apply -f manifests/` would reset their data to {}
+# on every deploy (that is what kept wiping user tags). The dashboard
+# auto-creates them on first use (see read_tags_map / read_applies).
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: npu-ops
+  namespace: npu-ops
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["npu-ops-tags", "npu-ops-keys"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: npu-ops
+  namespace: npu-ops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: npu-ops
+subjects:
+  - kind: ServiceAccount
+    name: npu-ops
+    namespace: npu-ops
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: npu-ops
+  namespace: npu-ops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: npu-ops
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "patch"]   # patch: per-card tags (npu-ops.io/tags)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: npu-ops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: npu-ops
+subjects:
+  - kind: ServiceAccount
+    name: npu-ops
+    namespace: npu-ops
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: npu-ops
+  namespace: npu-ops
+  labels:
+    app: npu-ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: npu-ops
+  template:
+    metadata:
+      labels:
+        app: npu-ops
+    spec:
+      serviceAccountName: npu-ops
+      imagePullSecrets:
+        - name: ghcr-fanbondi
+      containers:
+        - name: dashboard
+          image: ghcr.io/fanbondi/npu-ops:v1-e34c73d2
+          imagePullPolicy: Always
+          env:
+            - name: AUTOLOAD_AFTER_HOURS
+              value: "4"
+            - name: SCRAPE_INTERVAL
+              value: "15"
+          envFrom:
+            # LITELLM_API, LITELLM_MASTER_KEY, LITELLM_DB_URL, NPU_OPS_ADMIN_TOKEN
+            # (created out-of-band: kubectl -n npu-ops create secret generic
+            #  npu-ops-litellm --from-literal=... ; see README)
+            - secretRef:
+                name: npu-ops-litellm
+                optional: true
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: npu-ops
+  namespace: npu-ops
+  labels:
+    app: npu-ops
+spec:
+  type: NodePort
+  selector:
+    app: npu-ops
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30410
+      protocol: TCP
