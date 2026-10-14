@@ -137,7 +137,7 @@ router:
 # LiteLLM proxy for auth/spend tracking
 litellm:
   enabled: true
-  masterKey: "sk-qwen38b-local"
+  masterKey: "YOUR-API-KEY"
   image: ghcr.io/berriai/litellm:main-stable
   nodePort: 30400
   databaseUrl: ""  # Use in-memory DB (no Postgres needed for Phase 1)

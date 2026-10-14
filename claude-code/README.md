@@ -35,7 +35,7 @@ attributed to you.
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `qwen3.8-27b-262k` | Sonnet tier → 262k pool (long-context work) |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` | `qwen3.8-27b` | → 131k pool |
 | `"model"` | `sonnet` | resolves to `ANTHROPIC_DEFAULT_SONNET_MODEL` → 262k pool (long-context default); pin `"qwen3.8-27b"` instead to stay on 131k |
-| `ANTHROPIC_API_KEY` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (**not** an Anthropic key); the shared master key `sk-qwen38b-local` also works |
+| `ANTHROPIC_API_KEY` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (**not** an Anthropic key); the shared lab master key also works |
 | `CLAUDE_CODE_DISABLE_1M_CONTEXT` | `1` | suppresses the spurious `[1m]` badge on custom endpoints |
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `131072` | **required** — see below |
 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `8192` | matches the platform's per-request output budget |

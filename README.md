@@ -66,7 +66,8 @@ flowchart TD
 One base URL for everything: **`http://<NODE_IP>:30400`** (any cluster node).
 Get your own API key at **`http://<NODE_IP>:30410/keys`** (self-service,
 admin-approved in seconds — see [API keys](#api-keys-per-user)); the shared
-lab master key `sk-qwen38b-local` still works but is for admin/infra use.
+lab master key (chart default in `vllm-stack/values.yaml`) still works but
+is for admin/infra use.
 Pick a pool via the `model` field: `qwen3.8-27b` (131k, default) or
 `qwen3.8-27b-262k` (262k, long context). Standard `openai` / `anthropic`
 SDKs work as-is (`base_url=…:30400/v1` and `…:30400` respectively).
@@ -89,7 +90,7 @@ Exact `~/.claude/settings.json`:
     "DISABLE_ERROR_REPORTING": "1",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "MCP_TIMEOUT": "60000",
-    "ANTHROPIC_API_KEY": "sk-qwen38b-local",
+    "ANTHROPIC_API_KEY": "YOUR-API-KEY",
     "ANTHROPIC_BASE_URL": "http://<NODE_IP>:30400",
     "ANTHROPIC_MODEL": "qwen3.8-27b",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-27b",
@@ -146,7 +147,7 @@ Exact `~/.pi/agent/models.json`:
     "sirlab": {
       "baseUrl": "http://<NODE_IP>:30400/v1",
       "api": "openai-completions",
-      "apiKey": "sk-qwen38b-local",
+      "apiKey": "YOUR-API-KEY",
       "compat": {
         "supportsReasoningEffort": false,
         "thinkingFormat": "qwen-chat-template"
@@ -223,7 +224,7 @@ Managed in the **npu-ops** dashboard, **API keys** tab:
    a modal — copy it then; afterwards only its hash is kept.
 3. **Use it** — wherever the shared key used to go: `Authorization: Bearer
    <key>` against `http://<NODE_IP>:30400/v1` (OpenAI) or `:30400`
-   (Anthropic `/v1/messages`) — i.e. replace `sk-qwen38b-local` in
+   (Anthropic `/v1/messages`) — i.e. replace the key in
    `models.json` / `settings.json` / SDK clients.
 4. **Track / revoke** — "track your keys" on the same page (by Huawei ID, no
    login) shows request counts, token counts and last active per key; an
@@ -231,7 +232,8 @@ Managed in the **npu-ops** dashboard, **API keys** tab:
    LiteLLM's Postgres. Full spec (auth model, password rotation, REST API):
    [`npu-ops/README.md`](npu-ops/README.md).
 
-The master key `sk-qwen38b-local` remains valid for admin/infra (LiteLLM
+The shared master key (`litellm.masterKey` in `vllm-stack/values.yaml`)
+remains valid for admin/infra (LiteLLM
 admin UI, monitoring service monitors, chart defaults).
 
 ## Who is sending requests (LiteLLM observability)
@@ -248,7 +250,7 @@ comes from source IP + user-agent, captured per request in two places:
 - **CLI (no browser)** — `python3 scripts/track-requests.py [--since 2h | --tail]`
   summarizes the gateway's access log by client IP, with a live-tail mode.
 - **LiteLLM admin UI** — `http://<NODE_IP>:30400/ui`, login `admin` /
-  `sk-qwen38b-local`. The **Requests** page shows every request with
+  the shared master key. The **Requests** page shows every request with
   requester IP, user-agent, model, tokens, cost and status; **Spend** tracks
   totals. Backed by the Postgres deployed with the stack
   (`vllm-stack/templates/10-postgres.yaml`, static local PV on the

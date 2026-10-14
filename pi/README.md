@@ -39,7 +39,7 @@ session (live-editable, no restart).
 | File | Field | Value | Why |
 |------|-------|-------|-----|
 | models.json | `baseUrl` | `http://<NODE_IP>:30400/v1` | any cluster node; LiteLLM, OpenAI-compatible route |
-| models.json | `apiKey` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (self-service request + admin approve); the shared master key `sk-qwen38b-local` also works |
+| models.json | `apiKey` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (self-service request + admin approve); the shared lab master key also works |
 | models.json | model ids | `qwen3.8-27b`, `…-131k`, `…-262k` | same weights, two pools (32G / 64G HBM); the pool is picked by the model name |
 | models.json | `contextWindow` | `131072` / `262144` | the real vLLM limit per pool |
 | models.json | `maxTokens` | `8192` | **do not raise** — pi's input wall is `contextWindow − maxTokens`; stock values put it at ~33k and long sessions die there |

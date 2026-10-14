@@ -114,7 +114,7 @@ litellm:
   serviceName: litellm-proxy
   port: 4000
   nodePort: 30400
-  masterKey: "sk-qwen38b-local"
+  masterKey: "YOUR-API-KEY"
   # LiteLLM routes through the kv-router, which spreads requests across the
   # 2 vLLM replicas (litellm -> router -> kv-sidecar -> vllm).
   apiBase: "http://router-service:8080/v1"

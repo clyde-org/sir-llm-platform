@@ -29,7 +29,7 @@ metadata:
     release: prometheus
 type: Opaque
 stringData:
-  token: sk-qwen38b-local
+  token: YOUR-API-KEY
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
