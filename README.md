@@ -63,25 +63,30 @@ flowchart TD
 
 ## Quick start
 
-One base URL for everything: **`http://<NODE_IP>:30400`** (any cluster node).
-Get your own API key at **`http://<NODE_IP>:30410/keys`** (self-service,
-admin-approved in seconds — see [API keys](#api-keys-per-user)); the shared
-lab master key (chart default in `vllm-stack/values.yaml`) still works but
-is for admin/infra use.
-Pick a pool via the `model` field: `qwen3.8-27b` (131k, default) or
-`qwen3.8-27b-262k` (262k, long context). Standard `openai` / `anthropic`
-SDKs work as-is (`base_url=…:30400/v1` and `…:30400` respectively).
+- **Base URL** — `http://7.242.101.107:30400` (any cluster node IP works)
+  - OpenAI (`/v1/chat/completions`): `http://7.242.101.107:30400/v1`
+  - Anthropic (`/v1/messages`): `http://7.242.101.107:30400`
+- **API key** — get your own at `http://7.242.101.107:30410/keys` → [API keys](#api-keys-per-user)
+  - shared master key (`vllm-stack/values.yaml`) is for admin/infra only
+- **Pool** — picked by the `model` field: `qwen3.8-27b` (131k, default) · `qwen3.8-27b-262k` (262k)
+- **Verify**:
+
+```bash
+curl -s http://7.242.101.107:30400/v1/chat/completions \
+  -H "Authorization: Bearer YOUR-API-KEY" -H "Content-Type: application/json" \
+  -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"Reply with PONG"}],"max_tokens":20}'
+```
 
 ### Claude Code
 
-Claude Code uses the Anthropic path (`/v1/messages`):
+- **Setup** (back up any existing settings first; replace `YOUR-API-KEY`):
 
 ```bash
-cp claude-code/settings.qwen3-8b.json ~/.claude/settings.json   # back up first if needed
+cp claude-code/settings.qwen3-8b.json ~/.claude/settings.json
 claude -p "Reply with PONG"                                     # verify
 ```
 
-Exact `~/.claude/settings.json`:
+- **Full `~/.claude/settings.json`**:
 
 ```json
 {
@@ -91,7 +96,7 @@ Exact `~/.claude/settings.json`:
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "MCP_TIMEOUT": "60000",
     "ANTHROPIC_API_KEY": "YOUR-API-KEY",
-    "ANTHROPIC_BASE_URL": "http://<NODE_IP>:30400",
+    "ANTHROPIC_BASE_URL": "http://7.242.101.107:30400",
     "ANTHROPIC_MODEL": "qwen3.8-27b",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-27b",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b-262k",
@@ -104,7 +109,7 @@ Exact `~/.claude/settings.json`:
     "HTTPS_PROXY": "http://127.0.0.1:3128",
     "http_proxy": "http://127.0.0.1:3128",
     "https_proxy": "http://127.0.0.1:3128",
-    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com,<NODE_IP>"
+    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com,7.242.101.107"
   },
   "model": "sonnet",
   "enabledPlugins": {
@@ -116,36 +121,33 @@ Exact `~/.claude/settings.json`:
 }
 ```
 
-- **`CLAUDE_CODE_AUTO_COMPACT_WINDOW` is required** — without it Claude Code
-  assumes a 200k window and long sessions die with
-  `500 … maximum context length is 131072`. The template's `131072` trigger
-  (≈110k) is safe on both pools; on the 262k pool (the default below) raise it
-  to `240000` to use the full window (env is read at session start).
-- The template pins the session to the **sonnet tier → 262k pool**
-  (`"model": "sonnet"`); everything else stays on 131k. Pin
-  `"qwen3.8-27b"` explicitly to stay on 131k.
-- The `*_PROXY` lines and `enabledPlugins` are workstation-specific — drop
-  them if your machine reaches the cluster directly.
+- `CLAUDE_CODE_AUTO_COMPACT_WINDOW: 131072` is **required** — without it,
+  long sessions die with `500 … maximum context length is 131072`; raise to
+  `240000` to use the full 262k window (env read at session start)
+- `"model": "sonnet"` pins the session to the 262k pool; everything else
+  stays 131k (pin `"qwen3.8-27b"` to force 131k)
+- `*_PROXY` lines + `enabledPlugins` are workstation-specific — drop if
+  your machine reaches the cluster directly
 
 ### pi
 
-pi uses the OpenAI path (`/v1/chat/completions`):
+- **Setup** (merge the `sirlab` entry if `models.json` already has providers):
 
 ```bash
 mkdir -p ~/.pi/agent
-cp pi/models.json    ~/.pi/agent/models.json   # merge the "sirlab" entry if the file already has providers
+cp pi/models.json    ~/.pi/agent/models.json
 cp pi/settings.json  ~/.pi/agent/settings.json
 pi --list-models qwen      # should list sirlab / qwen3.8-27b
 pi -p "Reply with PONG"    # verify
 ```
 
-Exact `~/.pi/agent/models.json`:
+- **Full `~/.pi/agent/models.json`** (replace `YOUR-API-KEY`):
 
 ```json
 {
   "providers": {
     "sirlab": {
-      "baseUrl": "http://<NODE_IP>:30400/v1",
+      "baseUrl": "http://7.242.101.107:30400/v1",
       "api": "openai-completions",
       "apiKey": "YOUR-API-KEY",
       "compat": {
@@ -183,7 +185,7 @@ Exact `~/.pi/agent/models.json`:
 }
 ```
 
-Exact `~/.pi/agent/settings.json`:
+- **Full `~/.pi/agent/settings.json`**:
 
 ```json
 {
@@ -201,20 +203,17 @@ Exact `~/.pi/agent/settings.json`:
 }
 ```
 
-- **Don't raise `maxTokens: 8192`** — pi's input wall is
-  `contextWindow − maxTokens`; stock values shrink it to ~33k and long
-  sessions die there.
-- The compaction settings trigger at ~98k tokens, so 131k-pool sessions run
-  to ~122k input (262k pool: ~254k) and compact cleanly instead of failing
-  with `prompt is too long`.
-- `models.json` is reloaded when you open `/model` in a session — live-edit
-  without restart.
+- don't raise `maxTokens: 8192` — pi's input wall is
+  `contextWindow − maxTokens`
+- compaction triggers at ~98k → sessions run to ~122k input (262k pool:
+  ~254k) and compact cleanly instead of failing with `prompt is too long`
+- `models.json` is reloaded when you open `/model` — live-edit, no restart
 
 ## API keys (per-user)
 
 Everyone gets their own LiteLLM **virtual key** — no more one shared lab key.
 Managed in the **npu-ops** dashboard, **API keys** tab:
-**`http://<NODE_IP>:30410/keys`**.
+**`http://7.242.101.107:30410/keys`**.
 
 1. **Request** — fill in your Huawei ID / username (no spaces — it becomes the
    key's `user_id`), full name, team, and optionally restrict the key to
@@ -223,7 +222,7 @@ Managed in the **npu-ops** dashboard, **API keys** tab:
    right). On approval the key is generated in LiteLLM and shown **once** in
    a modal — copy it then; afterwards only its hash is kept.
 3. **Use it** — wherever the shared key used to go: `Authorization: Bearer
-   <key>` against `http://<NODE_IP>:30400/v1` (OpenAI) or `:30400`
+   <key>` against `http://7.242.101.107:30400/v1` (OpenAI) or `:30400`
    (Anthropic `/v1/messages`) — i.e. replace the key in
    `models.json` / `settings.json` / SDK clients.
 4. **Track / revoke** — "track your keys" on the same page (by Huawei ID, no
@@ -242,14 +241,14 @@ With per-user virtual keys (above), the LiteLLM admin UI attributes every
 request to its owner. For shared/legacy clients on the master key, attribution
 comes from source IP + user-agent, captured per request in two places:
 
-- **Grafana** — `http://<NODE_IP>:30300/d/sir-llm-platform-vllm`, row
+- **Grafana** — `http://7.242.101.107:30300/d/sir-llm-platform-vllm`, row
   **Client requests (LiteLLM gateway)**: rate by IP × agent, per-agent rate,
   requests by IP × status code, failures by client, 24h totals per client,
   token throughput per model. `client_ip` is the pod IP for in-cluster
   clients — map it back with `kubectl get pods -A -o wide | grep <ip>`.
 - **CLI (no browser)** — `python3 scripts/track-requests.py [--since 2h | --tail]`
   summarizes the gateway's access log by client IP, with a live-tail mode.
-- **LiteLLM admin UI** — `http://<NODE_IP>:30400/ui`, login `admin` /
+- **LiteLLM admin UI** — `http://7.242.101.107:30400/ui`, login `admin` /
   the shared master key. The **Requests** page shows every request with
   requester IP, user-agent, model, tokens, cost and status; **Spend** tracks
   totals. Backed by the Postgres deployed with the stack

@@ -1,7 +1,7 @@
 {
   "providers": {
     "sirlab": {
-      "baseUrl": "http://<NODE_IP>:30400/v1",
+      "baseUrl": "http://7.242.101.107:30400/v1",
       "api": "openai-completions",
       "apiKey": "YOUR-API-KEY",
       "compat": {

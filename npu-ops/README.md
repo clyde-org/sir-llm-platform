@@ -4,7 +4,7 @@ A card-based dashboard to see, per server, what is running on its Ascend 910B
 NPUs and **who owns it** — real workloads vs dummy load vs free — with one-click
 **Load NPUs / Stop** and **auto-load** of dummy memory after 4h of idleness.
 
-UI: `http://<any-node-ip>:30410` (NodePort) or
+UI: `http://7.242.101.107:30410` (NodePort) or
 `kubectl port-forward -n npu-ops svc/npu-ops 8080:8080`.
 
 ## Components
