@@ -66,8 +66,8 @@ flowchart TD
 - **Base URL** — `http://7.242.101.107:30400` (any cluster node IP works)
   - OpenAI (`/v1/chat/completions`): `http://7.242.101.107:30400/v1`
   - Anthropic (`/v1/messages`): `http://7.242.101.107:30400`
-- **API key** — get your own at `http://7.242.101.107:30410/keys` → [API keys](#api-keys-per-user)
-  - shared master key (`vllm-stack/values.yaml`) is for admin/infra only
+- **API key** — apply at `http://7.242.101.107:30410/keys`, then contact
+  **Sheriffo (s00628324)** to approve your key
 - **Pool** — picked by the `model` field: `qwen3.8-27b` (131k, default) · `qwen3.8-27b-262k` (262k)
 - **Verify**:
 
