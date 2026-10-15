@@ -639,28 +639,38 @@ function renderMyKeys() {
   el.innerHTML = keyTable(myKeysList, false);
 }
 
+const MN = n => n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n/1e3) + "K" : String(n);
+const IN_TTL = "IN = input tokens sent. Agent clients (Claude Code, pi) resend the whole " +
+  "conversation on every turn, so IN grows fast even though the model mainly processes " +
+  "the new tail. 'new' = estimated input tokens actually processed; 'cached' = repeated " +
+  "tokens served from vLLM's prefix cache (cheap lookup, no re-prefill). Estimate: each " +
+  "pool's prefix-cache hit rate since its last engine restart.";
+
 function cacheChips() {
   const rates = (cacheStats && cacheStats.rates) || {};
   const ms = Object.keys(rates).sort();
   if (!ms.length) return "";
-  const ttl = "Prefix-cache hit rate per pool (vLLM counters, since each engine's last restart). " +
-    "IN counts all input tokens sent — agents resend the whole conversation every turn, and " +
-    "cached tokens are cheap KV lookups, not fresh prefill.";
-  return `<span title="${ttl}" style="cursor:help;border-bottom:1px dotted var(--dim)"> · prefix cache ` +
-    ms.map(m => `${esc(m)} <b>${(100*rates[m].rate).toFixed(0)}%</b>`).join(" · ") +
-    ` of in cached</span>`;
+  const ttl = "Share of input tokens served from the prefix cache, per model pool. " +
+    "From vLLM's own counters, since each engine's last restart (counters reset on restart).";
+  return `<span title="${ttl}" style="cursor:help;border-bottom:1px dotted var(--dim)">&nbsp;· cache hit rate: ` +
+    ms.map(m => `${esc(m)} <b>${(100*rates[m].rate).toFixed(0)}%</b>`).join(" · ") + `</span>`;
+}
+
+function inBreakdown(nw, ca) {
+  if (!nw && !ca) return "";
+  return `<span title="${IN_TTL}" style="cursor:help;border-bottom:1px dotted var(--dim)">` +
+    `&nbsp;· in: <b>${MN(nw)}</b> new · ${MN(ca)} cached (est.)</span>`;
 }
 
 function freshLine(k) {
   if (k.prompt_fresh_est == null || !k.prompt_tokens) return "";
-  const pct = k.prompt_tokens ? Math.round(100 * k.prompt_cached_est / k.prompt_tokens) : 0;
-  return `<div class="dim" style="font-size:11px">fresh in ≈ ${k.prompt_fresh_est.toLocaleString()} · ${pct}% of in cached</div>`;
+  return `<div class="dim" style="font-size:11px" title="${IN_TTL}">in: ${MN(k.prompt_fresh_est)} new · ${MN(k.prompt_cached_est)} cached (est.)</div>`;
 }
 
 function keyTable(keys, adm) {
   if (!keys.length) return '<div class="dim">no keys</div>';
   const tot = keys.reduce((a,k) => ({req:a.req+k.requests, tok:a.tok+k.total_tokens,
-    fresh:a.fresh+(k.prompt_fresh_est||0)}), {req:0, tok:0, fresh:0});
+    pt:a.pt+k.prompt_tokens, fresh:a.fresh+(k.prompt_fresh_est||0)}), {req:0, tok:0, pt:0, fresh:0});
   const rows = keys.map(k => {
     return `<tr>
       <td><b>${esc(k.full_name || k.owner)}</b><div class="dim" style="font-size:11px">@${esc(k.owner)}</div>
@@ -678,7 +688,7 @@ function keyTable(keys, adm) {
   return `<div class="dim" style="margin-bottom:8px;font-size:13px">
       ${keys.length} key${keys.length>1?"s":""} ·
       <b>${tot.req}</b> requests · <b>${tot.tok.toLocaleString()}</b> tokens
-      ${tot.fresh ? `<span title="Estimated novel (non-cached) input tokens, from each pool's prefix-cache hit rate">· fresh in ≈ <b>${tot.fresh.toLocaleString()}</b></span>` : ""}
+      ${inBreakdown(tot.fresh, tot.pt - tot.fresh)}
       ${cacheChips()}</div>
     <table class="kt"><tr><th>user</th><th>models</th>
       <th>requests</th><th>tokens (in/out)</th><th>last active</th><th>status</th><th></th></tr>

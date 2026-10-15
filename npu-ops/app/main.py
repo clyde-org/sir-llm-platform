@@ -41,7 +41,7 @@ BUSY_UTIL_PCT = float(os.environ.get("BUSY_UTIL_PCT", "5"))            # util th
 BUSY_HBM_MARGIN_MB = float(os.environ.get("BUSY_HBM_MARGIN_MB", "4096"))  # hbm above baseline
 BASELINE_HBM_MB = float(os.environ.get("BASELINE_HBM_MB", "3000"))     # per-device driver baseline
 AUTOLOAD_LABEL = "npu-ops.io/auto-load"
-UI_VERSION = "9"  # bump with every UI/API change; stale pages detect & self-reload
+UI_VERSION = "10"  # bump with every UI/API change; stale pages detect & self-reload
 # Access control: one password gates the NPU tab AND the key-admin actions.
 # Clients need no password (apply + track-by-name are public).
 ADMIN_PASSWORD = os.environ.get("NPU_OPS_ADMIN_PASSWORD", "")
