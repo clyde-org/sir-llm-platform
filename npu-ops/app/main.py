@@ -159,8 +159,17 @@ class K8s:
         return out
 
     def npu_pods_by_node(self):
-        """node -> [pod summary] for pods that request NPU resources (Pending/Running)."""
-        items = self.api.list_pod_for_all_namespaces(watch=False).items
+        """node -> [pod summary] for pods that request NPU resources (Pending/Running).
+
+        Uses status.phase field selectors instead of a full list: a plain
+        list_pod_for_all_namespaces deserializes *every* pod in the cluster
+        (dead Failed pods pile up to thousands) and OOM-killed the 512Mi
+        dashboard on every 15 s scrape.
+        """
+        items = []
+        for phase in ("Running", "Pending"):
+            items.extend(self.api.list_pod_for_all_namespaces(
+                watch=False, field_selector=f"status.phase={phase}").items)
         out = {}
         for p in items:
             phase = p.status.phase
