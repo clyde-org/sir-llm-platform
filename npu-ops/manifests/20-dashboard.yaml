@@ -86,13 +86,15 @@ spec:
         - name: ghcr-fanbondi
       containers:
         - name: dashboard
-          image: ghcr.io/fanbondi/npu-ops:v1-662a87d6
+          image: ghcr.io/fanbondi/npu-ops:v1-f7e73483
           imagePullPolicy: Always
           env:
             - name: AUTOLOAD_AFTER_HOURS
               value: "4"
             - name: SCRAPE_INTERVAL
               value: "15"
+            - name: PROMETHEUS_API
+              value: "http://prometheus-kube-prometheus-prometheus.monitoring:9090"
           envFrom:
             # LITELLM_API, LITELLM_MASTER_KEY, LITELLM_DB_URL, NPU_OPS_ADMIN_TOKEN
             # (created out-of-band: kubectl -n npu-ops create secret generic

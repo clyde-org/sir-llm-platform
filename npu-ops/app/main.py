@@ -41,7 +41,7 @@ BUSY_UTIL_PCT = float(os.environ.get("BUSY_UTIL_PCT", "5"))            # util th
 BUSY_HBM_MARGIN_MB = float(os.environ.get("BUSY_HBM_MARGIN_MB", "4096"))  # hbm above baseline
 BASELINE_HBM_MB = float(os.environ.get("BASELINE_HBM_MB", "3000"))     # per-device driver baseline
 AUTOLOAD_LABEL = "npu-ops.io/auto-load"
-UI_VERSION = "8"  # bump with every UI/API change; stale pages detect & self-reload
+UI_VERSION = "9"  # bump with every UI/API change; stale pages detect & self-reload
 # Access control: one password gates the NPU tab AND the key-admin actions.
 # Clients need no password (apply + track-by-name are public).
 ADMIN_PASSWORD = os.environ.get("NPU_OPS_ADMIN_PASSWORD", "")
@@ -689,7 +689,7 @@ def keys_list(request: Request, owner: Optional[str] = None):
     clients track their own keys). Authenticated admins see the full list."""
     authed = _valid_token(_auth_token(request))
     try:
-        keys = kkeys.list_keys()
+        keys, cache_stats = kkeys.list_keys()
     except kkeys.KeysError as e:
         raise HTTPException(502, str(e))
     if owner:
@@ -697,7 +697,8 @@ def keys_list(request: Request, owner: Optional[str] = None):
         keys = [k for k in keys if k["owner"].strip().lower() == o]  # case-insensitive
     elif not authed:
         keys = []
-    return {"keys": keys, "admin": authed, "ui_version": UI_VERSION}
+    return {"keys": keys, "admin": authed, "ui_version": UI_VERSION,
+            "cache_stats": cache_stats}
 
 
 @app.get("/api/keys/{key_hash}/detail")

@@ -25,6 +25,9 @@ LITELLM_API = os.environ.get("LITELLM_API",
 LITELLM_MASTER_KEY = os.environ.get("LITELLM_MASTER_KEY", "")
 LITELLM_DB_URL = os.environ.get("LITELLM_DB_URL", "")
 ADMIN_TOKEN = os.environ.get("NPU_OPS_ADMIN_TOKEN", "")
+# Prometheus (kube-prometheus-stack): source for vLLM prefix-cache counters
+PROMETHEUS_API = os.environ.get("PROMETHEUS_API",
+    "http://prometheus-kube-prometheus-prometheus.monitoring:9090")
 KEYS_CM = ("npu-ops-keys", "npu-ops", "applies.json")
 
 
@@ -133,8 +136,60 @@ def _jsonify(v):
     return v
 
 
+def _model_suffix(model):
+    """SpendLogs stores e.g. 'openai/qwen3.8-27b'; vLLM's metric label is the
+    bare model name — strip the provider prefix for matching."""
+    return (model or "").split("/", 1)[-1]
+
+
+def cache_hit_rates():
+    """Cumulative prefix-cache hit rate per model, from vLLM's own counters.
+
+    The vLLM Ascend fork never reports per-request cached tokens in the API
+    response (usage.prompt_tokens_details stays null), so LiteLLM's
+    SpendLogs cannot split IN into cached vs novel input. The
+    vllm:prefix_cache_{hits,queries}_total counters (token counts, per model)
+    are the only source of truth. Rates are since each engine's last restart
+    (counters reset on restart) — a mix of restart times per pool makes the
+    number approximate, but it is the honest aggregate.
+    Returns {} when Prometheus is unreachable; callers must then treat IN
+    as all-novel (conservative).
+    """
+    import urllib.parse
+    out = {}
+    try:
+        for counter, field in (("vllm:prefix_cache_hits_total", "hits"),
+                               ("vllm:prefix_cache_queries_total", "queries")):
+            query = f'sum by (model_name) ({counter}{{namespace="sir-llm-platform"}})'
+            r = httpx.get(PROMETHEUS_API + "/api/v1/query?query=" +
+                          urllib.parse.quote(query), timeout=10)
+            r.raise_for_status()
+            for res in r.json()["data"]["result"]:
+                m = res["metric"].get("model_name")
+                if not m:
+                    continue
+                out.setdefault(m, {"hits": 0.0, "queries": 0.0})[field] = \
+                    float(res["value"][1])
+        for m in out:
+            q = out[m]["queries"]
+            out[m]["rate"] = (out[m]["hits"] / q) if q > 0 else 0.0
+        return out
+    except (httpx.HTTPError, KeyError, ValueError, TypeError):
+        return {}
+
+
 def list_keys(include_blocked=True):
-    """All virtual keys with aggregate usage (one row per key)."""
+    """All virtual keys with aggregate usage (one row per key), plus the
+    per-model prefix-cache hit rates.
+
+    IN is split into cached vs novel (ESTIMATE): per-request cached tokens
+    are not stored anywhere (see cache_hit_rates), so each key's per-model
+    prompt tokens are scaled by that model's cumulative hit rate.
+    """
+    rates = cache_hit_rates()
+    fleet_hits = sum(r["hits"] for r in rates.values())
+    fleet_queries = sum(r["queries"] for r in rates.values())
+    fleet_rate = (fleet_hits / fleet_queries) if fleet_queries > 0 else 0.0
     q = """
       SELECT t."token", t.user_id, t.metadata, t.models,
              t.blocked, t."created_at", t.last_active,
@@ -154,11 +209,30 @@ def list_keys(include_blocked=True):
     try:
         with conn.cursor() as cur:
             cur.execute(q)
+            rows = cur.fetchall()
+            # per key, per model: how many prompt tokens actually went to
+            # each vLLM pool (weights the cache-hit estimate per key)
+            cur.execute("""
+              SELECT api_key, model, COALESCE(SUM(prompt_tokens),0)
+              FROM "LiteLLM_SpendLogs" GROUP BY 1, 2""")
+            by_model = {}
+            for kh, model, pt in cur.fetchall():
+                by_model.setdefault(kh, {})[_model_suffix(model)] = int(pt or 0)
             out = []
             for (kh, user_id, metadata, models, blocked,
                  created, last_active, requests, total_tokens, prompt_tokens,
-                 completion_tokens) in cur.fetchall():
+                 completion_tokens) in rows:
                 md = _jsonify(metadata) or {}
+                pt = int(prompt_tokens or 0)
+                used = by_model.get(kh, {})
+                if used:
+                    # split this key's IN by the pool it actually hit
+                    cached = sum(int(t * rates.get(m, {}).get("rate", 0.0))
+                                 for m, t in used.items())
+                else:
+                    # no per-model rows (zero usage): fall back to fleet rate
+                    cached = int(pt * fleet_rate)
+                cached = max(0, min(cached, pt))
                 out.append({
                     "hash": kh,
                     "owner": user_id or md.get("owner") or "unassigned",
@@ -170,10 +244,12 @@ def list_keys(include_blocked=True):
                     "last_active": last_active.timestamp() if last_active else None,
                     "requests": int(requests),
                     "total_tokens": int(total_tokens or 0),
-                    "prompt_tokens": int(prompt_tokens or 0),
+                    "prompt_tokens": pt,
                     "completion_tokens": int(completion_tokens or 0),
+                    "prompt_cached_est": cached,
+                    "prompt_fresh_est": pt - cached,
                 })
-            return out
+            return out, {"rates": rates, "fleet_rate": fleet_rate}
     finally:
         conn.close()
 

@@ -316,6 +316,7 @@ let npuTimer = null;   // NPU poll handle (declared here: router calls initNpus 
 let myOwner = localStorage.getItem("npuops_owner") || "";
 let myKeysList = null;          // track-your-keys result
 let adminData = null;           // {applies, keys} for the admin section
+let cacheStats = null;          // {rates: {model: {hits, queries, rate}}, fleet_rate} from /api/keys
 const kDetail = {};             // hash -> {daily, by_model, last_request}
 const kOpen = new Set();        // hashes with the stats row expanded
 
@@ -622,6 +623,7 @@ async function loadMyKeys() {
     const r = await fetch("/api/keys?owner=" + encodeURIComponent(owner));
     const d = await r.json();
     myKeysList = d.keys || [];
+    cacheStats = d.cache_stats || null;
     staleCheck(d.ui_version);
     renderMyKeys();
   } catch (e) {}
@@ -637,17 +639,35 @@ function renderMyKeys() {
   el.innerHTML = keyTable(myKeysList, false);
 }
 
+function cacheChips() {
+  const rates = (cacheStats && cacheStats.rates) || {};
+  const ms = Object.keys(rates).sort();
+  if (!ms.length) return "";
+  const ttl = "Prefix-cache hit rate per pool (vLLM counters, since each engine's last restart). " +
+    "IN counts all input tokens sent — agents resend the whole conversation every turn, and " +
+    "cached tokens are cheap KV lookups, not fresh prefill.";
+  return `<span title="${ttl}" style="cursor:help;border-bottom:1px dotted var(--dim)"> · prefix cache ` +
+    ms.map(m => `${esc(m)} <b>${(100*rates[m].rate).toFixed(0)}%</b>`).join(" · ") +
+    ` of in cached</span>`;
+}
+
+function freshLine(k) {
+  if (k.prompt_fresh_est == null || !k.prompt_tokens) return "";
+  const pct = k.prompt_tokens ? Math.round(100 * k.prompt_cached_est / k.prompt_tokens) : 0;
+  return `<div class="dim" style="font-size:11px">fresh in ≈ ${k.prompt_fresh_est.toLocaleString()} · ${pct}% of in cached</div>`;
+}
+
 function keyTable(keys, adm) {
   if (!keys.length) return '<div class="dim">no keys</div>';
-  const tot = keys.reduce((a,k) => ({req:a.req+k.requests, tok:a.tok+k.total_tokens}),
-                           {req:0, tok:0});
+  const tot = keys.reduce((a,k) => ({req:a.req+k.requests, tok:a.tok+k.total_tokens,
+    fresh:a.fresh+(k.prompt_fresh_est||0)}), {req:0, tok:0, fresh:0});
   const rows = keys.map(k => {
     return `<tr>
       <td><b>${esc(k.full_name || k.owner)}</b><div class="dim" style="font-size:11px">@${esc(k.owner)}</div>
           ${k.team ? `<div class="dim" style="font-size:11px">${esc(k.team)}</div>` : ""}</td>
       <td>${(k.models || []).map(esc).join(", ") || "any"}</td>
       <td>${k.requests}</td>
-      <td>${k.total_tokens.toLocaleString()} <span class="dim">(${k.prompt_tokens.toLocaleString()}/${k.completion_tokens.toLocaleString()})</span></td>
+      <td>${k.total_tokens.toLocaleString()} <span class="dim">(${k.prompt_tokens.toLocaleString()}/${k.completion_tokens.toLocaleString()})</span>${freshLine(k)}</td>
       <td>${k.last_active ? ago(k.last_active) : "never"}</td>
       <td><span class="kstat ${k.blocked ? "blocked" : "active"}">${k.blocked ? "revoked" : "active"}</span></td>
       <td style="white-space:nowrap">
@@ -657,7 +677,9 @@ function keyTable(keys, adm) {
   }).join("");
   return `<div class="dim" style="margin-bottom:8px;font-size:13px">
       ${keys.length} key${keys.length>1?"s":""} ·
-      <b>${tot.req}</b> requests · <b>${tot.tok.toLocaleString()}</b> tokens</div>
+      <b>${tot.req}</b> requests · <b>${tot.tok.toLocaleString()}</b> tokens
+      ${tot.fresh ? `<span title="Estimated novel (non-cached) input tokens, from each pool's prefix-cache hit rate">· fresh in ≈ <b>${tot.fresh.toLocaleString()}</b></span>` : ""}
+      ${cacheChips()}</div>
     <table class="kt"><tr><th>user</th><th>models</th>
       <th>requests</th><th>tokens (in/out)</th><th>last active</th><th>status</th><th></th></tr>
       ${rows}</table>`;
@@ -767,6 +789,7 @@ async function loadAdmin() {
       fetch("/api/keys", {headers: authHeaders()}).then(r => r.ok ? r.json() : {keys: []})]);
     if (ka.applies === undefined && kk.keys === undefined) { renderAdminSection(); return; }  // 401
     adminData = {applies: ka.applies || [], keys: kk.keys || []};
+    cacheStats = kk.cache_stats || null;
     staleCheck(kk.ui_version);
     renderApplies(); renderKeyTableAll(); updateBadge();
   } catch (e) {}
