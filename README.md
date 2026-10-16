@@ -3,8 +3,8 @@
 Self-hosted LLM serving: **Qwen3.8-27B** on **Huawei Ascend 910B NPUs** —
 **vLLM** + KV-aware router + **LiteLLM** gateway, Prometheus/Grafana
 monitoring. Client how-tos:
-[claude-code](claude-code/README.md) · [pi](pi/README.md) ·
-[opencode](opencode/README.md) ·
+[pi](pi/README.md) · [opencode](opencode/README.md) ·
+[claude-code](claude-code/README.md) ·
 [deepseek-harness](deepseek-harness/README.md) ·
 [monitoring](monitoring/README.md).
 
@@ -79,58 +79,6 @@ curl -s http://<NODE_IP>:30400/v1/chat/completions \
   -H "Authorization: Bearer YOUR-API-KEY" -H "Content-Type: application/json" \
   -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"Reply with PONG"}],"max_tokens":20}'
 ```
-
-### Claude Code
-
-- **Setup** (back up any existing settings first; replace `<NODE_IP>` and `YOUR-API-KEY`):
-
-```bash
-cp claude-code/settings.qwen3-8b.json ~/.claude/settings.json
-claude -p "Reply with PONG"                                     # verify
-```
-
-- **Full `~/.claude/settings.json`**:
-
-```json
-{
-  "env": {
-    "DISABLE_TELEMETRY": "1",
-    "DISABLE_ERROR_REPORTING": "1",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "MCP_TIMEOUT": "60000",
-    "ANTHROPIC_API_KEY": "YOUR-API-KEY",
-    "ANTHROPIC_BASE_URL": "http://<NODE_IP>:30400",
-    "ANTHROPIC_MODEL": "qwen3.8-27b",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-27b",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b-262k",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3.8-27b",
-    "ANTHROPIC_SMALL_FAST_MODEL": "qwen3.8-27b",
-    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
-    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "131072",
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192",
-    "HTTP_PROXY": "http://127.0.0.1:3128",
-    "HTTPS_PROXY": "http://127.0.0.1:3128",
-    "http_proxy": "http://127.0.0.1:3128",
-    "https_proxy": "http://127.0.0.1:3128",
-    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com,<NODE_IP>"
-  },
-  "model": "sonnet",
-  "enabledPlugins": {
-    "cc-demo-plugin@rtos-cc-marketplace": true
-  },
-  "outputStyle": "engineer-professional",
-  "skipWebFetchPreflight": true,
-  "theme": "dark"
-}
-```
-
-- `CLAUDE_CODE_AUTO_COMPACT_WINDOW: 131072` is **required** — without it,
-  long sessions die with `500 … maximum context length is 131072`; raise to
-  `240000` to use the full 262k window (env read at session start)
-- `"model": "sonnet"` pins the session to the 262k pool; everything else
-  stays 131k (pin `"qwen3.8-27b"` to force 131k)
-- `*_PROXY` lines + `enabledPlugins` are workstation-specific — drop if
-  your machine reaches the cluster directly
 
 ### pi
 
@@ -211,6 +159,111 @@ pi -p "Reply with PONG"    # verify
 - compaction triggers at ~98k → sessions run to ~122k input (262k pool:
   ~254k) and compact cleanly instead of failing with `prompt is too long`
 - `models.json` is reloaded when you open `/model` — live-edit, no restart
+
+### opencode
+
+- **Setup** (replace `<NODE_IP>` and `YOUR-API-KEY`):
+
+```bash
+npm install -g opencode-ai      # or: curl -fsSL https://opencode.ai/install | bash
+mkdir -p ~/.config/opencode
+cp opencode/opencode.json ~/.config/opencode/opencode.json
+opencode run "Reply with PONG"  # verify
+```
+
+- **Full `~/.config/opencode/opencode.json`** (replace `<NODE_IP>` and `YOUR-API-KEY`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "sirlab": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "SIR Lab",
+      "options": {
+        "baseURL": "http://<NODE_IP>:30400/v1",
+        "apiKey": "YOUR-API-KEY"
+      },
+      "models": {
+        "qwen3.8-27b": {
+          "name": "Qwen3.8 27B",
+          "limit": { "context": 131072, "output": 8192 }
+        },
+        "qwen3.8-27b-131k": {
+          "name": "Qwen3.8 27B (131k context, 32G pool)",
+          "limit": { "context": 131072, "output": 8192 }
+        },
+        "qwen3.8-27b-262k": {
+          "name": "Qwen3.8 27B (262k context, 64G pool)",
+          "limit": { "context": 262144, "output": 8192 }
+        }
+      }
+    }
+  },
+  "model": "sirlab/qwen3.8-27b"
+}
+```
+
+- don't raise `limit.output: 8192` — it's the platform's per-request
+  output budget
+- the pool is picked by the model name, same as pi: `qwen3.8-27b` /
+  `qwen3.8-27b-131k` → 131k pool, `qwen3.8-27b-262k` → 262k pool
+- `~/.config/opencode/opencode.json` is **global**; an `opencode.json` in a
+  project root overrides it (e.g. pin the 262k pool per repo)
+- opencode doesn't render Qwen's thinking stream for custom providers
+  (final answer only — thinking still runs server-side)
+
+### Claude Code
+
+- **Setup** (back up any existing settings first; replace `<NODE_IP>` and `YOUR-API-KEY`):
+
+```bash
+cp claude-code/settings.qwen3-8b.json ~/.claude/settings.json
+claude -p "Reply with PONG"                                     # verify
+```
+
+- **Full `~/.claude/settings.json`**:
+
+```json
+{
+  "env": {
+    "DISABLE_TELEMETRY": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "MCP_TIMEOUT": "60000",
+    "ANTHROPIC_API_KEY": "YOUR-API-KEY",
+    "ANTHROPIC_BASE_URL": "http://<NODE_IP>:30400",
+    "ANTHROPIC_MODEL": "qwen3.8-27b",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-27b",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b-262k",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3.8-27b",
+    "ANTHROPIC_SMALL_FAST_MODEL": "qwen3.8-27b",
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "131072",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192",
+    "HTTP_PROXY": "http://127.0.0.1:3128",
+    "HTTPS_PROXY": "http://127.0.0.1:3128",
+    "http_proxy": "http://127.0.0.1:3128",
+    "https_proxy": "http://127.0.0.1:3128",
+    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com,<NODE_IP>"
+  },
+  "model": "sonnet",
+  "enabledPlugins": {
+    "cc-demo-plugin@rtos-cc-marketplace": true
+  },
+  "outputStyle": "engineer-professional",
+  "skipWebFetchPreflight": true,
+  "theme": "dark"
+}
+```
+
+- `CLAUDE_CODE_AUTO_COMPACT_WINDOW: 131072` is **required** — without it,
+  long sessions die with `500 … maximum context length is 131072`; raise to
+  `240000` to use the full 262k window (env read at session start)
+- `"model": "sonnet"` pins the session to the 262k pool; everything else
+  stays 131k (pin `"qwen3.8-27b"` to force 131k)
+- `*_PROXY` lines + `enabledPlugins` are workstation-specific — drop if
+  your machine reaches the cluster directly
 
 ## API keys (per-user)
 

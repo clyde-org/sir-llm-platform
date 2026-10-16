@@ -67,6 +67,6 @@ The shared lab master key also works.
 | NextChat | web (single container) | lightweight; paste base URL + key in settings |
 | AnythingLLM / LM Studio / GPT4All | desktop / server | point "custom OpenAI-compatible" setting at the proxy |
 
-Coding-agent GUIs in this repo: **Claude Code**
-([claude-code/](../claude-code/README.md)) and **pi**
-([pi/](../pi/README.md)).
+Coding agents in this repo: **pi** ([pi/](../pi/README.md)),
+**opencode** ([opencode/](../opencode/README.md)) and **Claude Code**
+([claude-code/](../claude-code/README.md)).
