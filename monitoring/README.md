@@ -30,10 +30,10 @@ helm install promtail  loki/charts/promtail-6.17.1.tgz -n logging -f loki/promta
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Prometheus | `http://7.242.101.107:30900` | — |
-| Grafana | `http://7.242.101.107:30300` | `admin` / `prometheus-admin` |
-| Platform dashboard | `http://7.242.101.107:30300/d/sir-llm-platform-vllm` | — |
-| Loki log API (direct, lab only) | `http://7.242.101.107:32100` | none — logs contain secrets |
+| Prometheus | `http://<NODE_IP>:30900` | — |
+| Grafana | `http://<NODE_IP>:30300` | `admin` / `prometheus-admin` |
+| Platform dashboard | `http://<NODE_IP>:30300/d/sir-llm-platform-vllm` | — |
+| Loki log API (direct, lab only) | `http://<NODE_IP>:32100` | none — logs contain secrets |
 
 Dashboard rows: **Gateway/HTTP** · **Router/SLO** (queue, TTFT/E2E, SLO
 met/missed) · **Load balancing across vLLM replicas** · **Cache & speculative
@@ -90,7 +90,7 @@ sum by (client_ip, status_code) (rate(litellm_proxy_total_requests_metric_total{
 Check scrape status:
 
 ```bash
-curl -s http://7.242.101.107:30900/api/v1/targets \
+curl -s http://<NODE_IP>:30900/api/v1/targets \
   | jq '.data.activeTargets[] | select(.labels.namespace == "sir-llm-platform") | {job: .labels.job, health}'
 ```
 
@@ -120,7 +120,7 @@ uninstall: [`loki/README.md`](loki/README.md).
 
 - **Redis** — no redis-exporter deployed; the router queue state isn't directly observable.
 - **`vllm_threads` (:9101)** — the per-pod thread-count gauge is served but the vLLM PodMonitor only scrapes port `8200`; add a second endpoint to capture it.
-- **LiteLLM per-client tokens** — the token counters carry no client labels (upstream LiteLLM metric design), so per-client token usage must be read from the LiteLLM admin UI (`http://7.242.101.107:30400/ui`, Requests page) instead of Grafana.
+- **LiteLLM per-client tokens** — the token counters carry no client labels (upstream LiteLLM metric design), so per-client token usage must be read from the LiteLLM admin UI (`http://<NODE_IP>:30400/ui`, Requests page) instead of Grafana.
 
 ## Files
 

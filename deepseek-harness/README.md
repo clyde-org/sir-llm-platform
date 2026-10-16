@@ -12,6 +12,7 @@ OpenAI-compatible endpoint. Preconfigured for this platform's LiteLLM proxy
 
 ```bash
 cd sir-llm-platform/deepseek-harness
+export DEEPSEEK_BASE_URL=http://<NODE_IP>:30400   # any cluster node IP
 
 ./deepseek-chat                          # interactive REPL
 ./deepseek-chat -p "hello"               # one-shot
@@ -39,7 +40,7 @@ export DEEPSEEK_BASE_URL=https://api.deepseek.com DEEPSEEK_API_KEY=sk-... DEEPSE
 
 ## Open WebUI (already deployed — NodePort 30401)
 
-Chat GUI at `http://7.242.101.107:30401`; first account created becomes admin.
+Chat GUI at `http://<NODE_IP>:30401`; first account created becomes admin.
 
 ```bash
 kubectl apply -f open-webui.yaml                        # re-apply / restore
@@ -53,14 +54,14 @@ node can't pull from ghcr.io, add the egress-gateway CA:
 
 ## Other GUI options
 
-Any OpenAI-compatible client works: base URL `http://7.242.101.107:30400/v1`, key
-= **your own API key** from `http://7.242.101.107:30410/keys` (self-service,
+Any OpenAI-compatible client works: base URL `http://<NODE_IP>:30400/v1`, key
+= **your own API key** from `http://<NODE_IP>:30410/keys` (self-service,
 admin-approved; see [API keys in the main README](../README.md#api-keys-per-user)).
 The shared lab master key also works.
 
 | GUI | Type | Notes |
 |-----|------|-------|
-| LiteLLM Swagger UI | browser, zero install | `http://7.242.101.107:30400/` — API playground, not a chat UI |
+| LiteLLM Swagger UI | browser, zero install | `http://<NODE_IP>:30400/` — API playground, not a chat UI |
 | Open WebUI | web (Docker) | most popular self-hosted chat GUI; model picker, files, RAG |
 | LibreChat | web (Docker compose) | multi-provider, shares, agents |
 | NextChat | web (single container) | lightweight; paste base URL + key in settings |

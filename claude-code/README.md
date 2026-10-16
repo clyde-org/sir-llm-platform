@@ -13,6 +13,9 @@ reach a node IP on the lab network works directly.
 cp settings.qwen3-8b.json ~/.claude/settings.json
 ```
 
+Then replace **`<NODE_IP>`** (a cluster node IP — lab network, ask an admin)
+in `ANTHROPIC_BASE_URL` and `NO_PROXY`.
+
 Or apply **per-project**: put the settings in the project's
 `.claude/settings.json` (or `.claude/settings.local.json`), keeping your normal
 provider at user level.
@@ -20,7 +23,7 @@ provider at user level.
 Verify: `claude -p "Reply with PONG"`
 
 Then set **`ANTHROPIC_API_KEY` to your own API key** — request one at
-`http://7.242.101.107:30410/keys` (admin approves; the key is shown once, copy it
+`http://<NODE_IP>:30410/keys` (admin approves; the key is shown once, copy it
 in the modal). The template ships with the shared lab master key so it works
 out of the box, but a personal key is what you want: your requests get
 attributed to you.
@@ -29,13 +32,13 @@ attributed to you.
 
 | Setting | Value | Notes |
 |---------|-------|-------|
-| `ANTHROPIC_BASE_URL` | `http://7.242.101.107:30400` | any cluster node, LiteLLM NodePort, Anthropic `/v1/messages` |
+| `ANTHROPIC_BASE_URL` | `http://<NODE_IP>:30400` | any cluster node, LiteLLM NodePort, Anthropic `/v1/messages` |
 | `ANTHROPIC_MODEL` | `qwen3.8-27b` | default — 131k pool |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | `qwen3.8-27b` | "Default (recommended)" resolves to this var, so the default stays on 131k |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `qwen3.8-27b-262k` | Sonnet tier → 262k pool (long-context work) |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` | `qwen3.8-27b` | → 131k pool |
 | `"model"` | `sonnet` | resolves to `ANTHROPIC_DEFAULT_SONNET_MODEL` → 262k pool (long-context default); pin `"qwen3.8-27b"` instead to stay on 131k |
-| `ANTHROPIC_API_KEY` | your key from `http://7.242.101.107:30410/keys` | per-user LiteLLM virtual key (**not** an Anthropic key); the shared lab master key also works |
+| `ANTHROPIC_API_KEY` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (**not** an Anthropic key); the shared lab master key also works |
 | `CLAUDE_CODE_DISABLE_1M_CONTEXT` | `1` | suppresses the spurious `[1m]` badge on custom endpoints |
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `131072` | **required** — see below |
 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `8192` | matches the platform's per-request output budget |

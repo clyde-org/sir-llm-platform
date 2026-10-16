@@ -1,7 +1,7 @@
 # Open WebUI chat GUI for the SIR LLM platform.
 #
 #   kubectl apply -f deepseek-harness/open-webui.yaml
-#   kubectl get svc open-webui -n sir-llm-platform   # → http://7.242.101.107:30401
+#   kubectl get svc open-webui -n sir-llm-platform   # → http://<NODE_IP>:30401
 #
 # First visit: create an account — it becomes the admin.
 #

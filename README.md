@@ -63,23 +63,25 @@ flowchart TD
 
 ## Quick start
 
-- **Base URL** — `http://7.242.101.107:30400` (any cluster node IP works)
-  - OpenAI (`/v1/chat/completions`): `http://7.242.101.107:30400/v1`
-  - Anthropic (`/v1/messages`): `http://7.242.101.107:30400`
-- **API key** — apply at `http://7.242.101.107:30410/keys`, then contact
+- **Base URL** — `http://<NODE_IP>:30400` (any cluster node IP works;
+  replace `<NODE_IP>` throughout this guide and the config templates —
+  lab network only, ask an admin for a node IP)
+  - OpenAI (`/v1/chat/completions`): `http://<NODE_IP>:30400/v1`
+  - Anthropic (`/v1/messages`): `http://<NODE_IP>:30400`
+- **API key** — apply at `http://<NODE_IP>:30410/keys`, then contact
   **Sheriffo (s00628324)** to approve your key
 - **Pool** — picked by the `model` field: `qwen3.8-27b` (131k, default) · `qwen3.8-27b-262k` (262k)
 - **Verify**:
 
 ```bash
-curl -s http://7.242.101.107:30400/v1/chat/completions \
+curl -s http://<NODE_IP>:30400/v1/chat/completions \
   -H "Authorization: Bearer YOUR-API-KEY" -H "Content-Type: application/json" \
   -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"Reply with PONG"}],"max_tokens":20}'
 ```
 
 ### Claude Code
 
-- **Setup** (back up any existing settings first; replace `YOUR-API-KEY`):
+- **Setup** (back up any existing settings first; replace `<NODE_IP>` and `YOUR-API-KEY`):
 
 ```bash
 cp claude-code/settings.qwen3-8b.json ~/.claude/settings.json
@@ -96,7 +98,7 @@ claude -p "Reply with PONG"                                     # verify
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "MCP_TIMEOUT": "60000",
     "ANTHROPIC_API_KEY": "YOUR-API-KEY",
-    "ANTHROPIC_BASE_URL": "http://7.242.101.107:30400",
+    "ANTHROPIC_BASE_URL": "http://<NODE_IP>:30400",
     "ANTHROPIC_MODEL": "qwen3.8-27b",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-27b",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b-262k",
@@ -109,7 +111,7 @@ claude -p "Reply with PONG"                                     # verify
     "HTTPS_PROXY": "http://127.0.0.1:3128",
     "http_proxy": "http://127.0.0.1:3128",
     "https_proxy": "http://127.0.0.1:3128",
-    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com,7.242.101.107"
+    "NO_PROXY": "127.0.0.1,127.0.0.*,localhost,*.huawei.com,<NODE_IP>"
   },
   "model": "sonnet",
   "enabledPlugins": {
@@ -141,13 +143,13 @@ pi --list-models qwen      # should list sirlab / qwen3.8-27b
 pi -p "Reply with PONG"    # verify
 ```
 
-- **Full `~/.pi/agent/models.json`** (replace `YOUR-API-KEY`):
+- **Full `~/.pi/agent/models.json`** (replace `<NODE_IP>` and `YOUR-API-KEY`):
 
 ```json
 {
   "providers": {
     "sirlab": {
-      "baseUrl": "http://7.242.101.107:30400/v1",
+      "baseUrl": "http://<NODE_IP>:30400/v1",
       "api": "openai-completions",
       "apiKey": "YOUR-API-KEY",
       "compat": {
@@ -213,7 +215,7 @@ pi -p "Reply with PONG"    # verify
 
 Everyone gets their own LiteLLM **virtual key** — no more one shared lab key.
 Managed in the **npu-ops** dashboard, **API keys** tab:
-**`http://7.242.101.107:30410/keys`**.
+**`http://<NODE_IP>:30410/keys`**.
 
 1. **Request** — fill in your Huawei ID / username (no spaces — it becomes the
    key's `user_id`), full name, team, and optionally restrict the key to
@@ -222,7 +224,7 @@ Managed in the **npu-ops** dashboard, **API keys** tab:
    right). On approval the key is generated in LiteLLM and shown **once** in
    a modal — copy it then; afterwards only its hash is kept.
 3. **Use it** — wherever the shared key used to go: `Authorization: Bearer
-   <key>` against `http://7.242.101.107:30400/v1` (OpenAI) or `:30400`
+   <key>` against `http://<NODE_IP>:30400/v1` (OpenAI) or `:30400`
    (Anthropic `/v1/messages`) — i.e. replace the key in
    `models.json` / `settings.json` / SDK clients.
 4. **Track / revoke** — "track your keys" on the same page (by Huawei ID, no
@@ -241,14 +243,14 @@ With per-user virtual keys (above), the LiteLLM admin UI attributes every
 request to its owner. For shared/legacy clients on the master key, attribution
 comes from source IP + user-agent, captured per request in two places:
 
-- **Grafana** — `http://7.242.101.107:30300/d/sir-llm-platform-vllm`, row
+- **Grafana** — `http://<NODE_IP>:30300/d/sir-llm-platform-vllm`, row
   **Client requests (LiteLLM gateway)**: rate by IP × agent, per-agent rate,
   requests by IP × status code, failures by client, 24h totals per client,
   token throughput per model. `client_ip` is the pod IP for in-cluster
   clients — map it back with `kubectl get pods -A -o wide | grep <ip>`.
 - **CLI (no browser)** — `python3 scripts/track-requests.py [--since 2h | --tail]`
   summarizes the gateway's access log by client IP, with a live-tail mode.
-- **LiteLLM admin UI** — `http://7.242.101.107:30400/ui`, login `admin` /
+- **LiteLLM admin UI** — `http://<NODE_IP>:30400/ui`, login `admin` /
   the shared master key. The **Requests** page shows every request with
   requester IP, user-agent, model, tokens, cost and status; **Spend** tracks
   totals. Backed by the Postgres deployed with the stack
