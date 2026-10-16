@@ -302,7 +302,7 @@
 <div id="toast"></div>
 <script>
 "use strict";
-const UI_VERSION = "8";  // keep in sync with backend UI_VERSION
+const UI_VERSION = "11";  // keep in sync with backend UI_VERSION
 const ROUTE = (location.pathname.replace(/\/+$/, "") || "/");
 const VIEW = {"/": "home", "/npus": "npus", "/keys": "keys"}[ROUTE] || "home";
 const STATUS_COLOR = {FREE:"#2ea043", BUSY:"#388bfd", DUMMY:"#d29922",
@@ -315,6 +315,7 @@ let npuTimer = null;   // NPU poll handle (declared here: router calls initNpus 
 // later `let` would throw a TDZ ReferenceError and kill the whole page.
 let myOwner = localStorage.getItem("npuops_owner") || "";
 let myKeysList = null;          // track-your-keys result
+let myApplies = [];             // own pending applications (self-service withdraw)
 let adminData = null;           // {applies, keys} for the admin section
 let cacheStats = null;          // {rates: {model: {hits, queries, rate}}, fleet_rate} from /api/keys
 const kDetail = {};             // hash -> {daily, by_model, last_request}
@@ -620,23 +621,52 @@ async function loadMyKeys() {
   const owner = myOwner.trim();
   if (!owner) return;
   try {
-    const r = await fetch("/api/keys?owner=" + encodeURIComponent(owner));
-    const d = await r.json();
+    const [rk, ra] = await Promise.all([
+      fetch("/api/keys?owner=" + encodeURIComponent(owner)),
+      fetch("/api/keys/applies?owner=" + encodeURIComponent(owner))]);
+    const d = await rk.json();
     myKeysList = d.keys || [];
     cacheStats = d.cache_stats || null;
+    myApplies = ra.ok ? ((await ra.json()).applies) || [] : [];
     staleCheck(d.ui_version);
     renderMyKeys();
   } catch (e) {}
 }
 
+function renderMyApplies() {
+  if (!myApplies.length) return "";
+  return myApplies.map(a =>
+    `<div class="krow" style="align-items:center;margin-bottom:6px">
+       <span class="kstat pending">${esc(a.status)}</span>
+       <span style="font-size:13px">request <b class="kmono">${esc(a.id)}</b> for
+         ${(a.models || []).map(esc).join(", ") || "any model"} · submitted ${esc(a.created)}</span>
+       <button class="stop" onclick="withdrawApply('${a.id}')">delete — submitted by mistake</button>
+     </div>`).join("");
+}
+
 function renderMyKeys() {
   const el = $("#mykeys");
-  if (!myKeysList) { el.innerHTML = '<div class="dim">enter your name above to see your keys</div>'; return; }
+  const ap = renderMyApplies();
+  if (!myKeysList) { el.innerHTML = ap + '<div class="dim">enter your name above to see your keys</div>'; return; }
   if (!myKeysList.length) {
-    el.innerHTML = `<div class="dim">no keys for “${esc(myOwner)}” yet — request one above (an admin must approve it first)</div>`;
+    el.innerHTML = ap + `<div class="dim">no keys for “${esc(myOwner)}” yet — ` +
+      (ap ? "your request above is waiting for approval" : "request one above (an admin must approve it first)") + `</div>`;
     return;
   }
-  el.innerHTML = keyTable(myKeysList, false);
+  el.innerHTML = ap + keyTable(myKeysList, false);
+}
+
+async function withdrawApply(rid) {
+  if (!confirm(`delete application ${rid}?\nonly works while it is still pending — once approved, the key stays (an admin can revoke it).`)) return;
+  try {
+    const r = await fetch(`/api/keys/applies/${rid}/withdraw`, {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({owner: myOwner})});
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) { toast("delete failed — " + (b.detail || r.status), "err"); return; }
+    toast(`deleted ${rid}`, "ok");
+    loadMyKeys();
+  } catch (e) { toast("delete failed — " + e, "err"); }
 }
 
 const MN = n => n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n/1e3) + "K" : String(n);
@@ -819,6 +849,7 @@ function renderApplies() {
       <td style="white-space:nowrap">
         <button class="ok" onclick="approveKey('${a.id}')">approve</button>
         <button class="stop" onclick="rejectKey('${a.id}')">reject</button>
+        <button onclick="deleteApply('${a.id}')" title="permanently remove this record">delete</button>
       </td></tr>`).join("") + "</table>"
     : '<div class="dim">no pending applications</div>') +
     (hist.length ? `<details style="margin-top:8px">
@@ -867,6 +898,17 @@ async function rejectKey(rid) {
     toast(`rejected ${rid}`, "ok");
     loadAdmin();
   } catch (e) { if (e.message !== "auth") toast("reject failed — " + e.message, "err"); }
+}
+
+async function deleteApply(rid) {
+  if (!confirm(`permanently delete application ${rid}?\nif it was already approved, the minted key is NOT revoked — do that separately.`)) return;
+  try {
+    const r = await fetch(`/api/keys/applies/${rid}`, {method: "DELETE", headers: authHeaders()});
+    if (r.status === 401) { renderAdminSection(); return; }
+    if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error(b.detail || ("HTTP " + r.status)); }
+    toast(`deleted ${rid}`, "ok");
+    loadAdmin();
+  } catch (e) { toast("delete failed — " + e.message, "err"); }
 }
 
 async function revokeKey(h) {

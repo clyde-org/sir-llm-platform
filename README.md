@@ -229,8 +229,10 @@ Managed in the **npu-ops** dashboard, **API keys** tab:
    `models.json` / `settings.json` / SDK clients.
 4. **Track / revoke** — "track your keys" on the same page (by Huawei ID, no
    login) shows request counts, token counts and last active per key; an
-   admin blocks a key with one click. Per-key usage is read straight from
-   LiteLLM's Postgres. Full spec (auth model, password rotation, REST API):
+   admin blocks a key with one click. Request submitted by mistake? Delete
+   your own pending request from the same page (no login needed, pending
+   only). Per-key usage is read straight from LiteLLM's Postgres. Full spec
+   (auth model, password rotation, REST API):
    [`npu-ops/README.md`](npu-ops/README.md).
 
 The shared master key (`litellm.masterKey` in `vllm-stack/values.yaml`)

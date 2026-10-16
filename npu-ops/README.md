@@ -101,7 +101,7 @@ and the key-admin actions. Clients need no password.
 |------|--------|------|
 | `/` | public | Portal: NPU Fleet (admin) + API Keys |
 | `/npus` | password | Node status, Load/Stop dummy, tags, action log |
-| `/keys` | public + gated admin | Public: apply + track-your-keys (by owner name). Admin: approve/reject/revoke + all keys |
+| `/keys` | public + gated admin | Public: apply + track-your-keys (by owner name) + delete own pending request. Admin: approve/reject/revoke, delete any request + all keys |
 
 Login (`POST /api/auth/login {password}`) returns a **signed 12h token**
 (HMAC of the expiry with the password as key) that the browser keeps in
@@ -110,7 +110,10 @@ localStorage — no session store to operate. Gated HTTP endpoints accept
 
 Anonymous callers of `GET /api/keys` must pass `?owner=<name>` (that is how
 clients track their own keys by Huawei ID, case-insensitive); they never see
-other owners' keys.
+other owners' keys. `GET /api/keys/applies?owner=<name>` works the same way:
+anonymous callers see only their own *pending* applications — that is how the
+self-service “delete — submitted by mistake” button finds the request. Admins
+(token) see every application.
 
 **UI**: dark theme by default with a light-mode toggle (☀️/🌙 in the header,
 remembered per browser). The admin section of `/keys` is hidden while logged
@@ -133,10 +136,16 @@ Flow:
 1. **Request** — user fills the form: **Huawei ID / username** (required, no spaces —
    becomes the key's `user_id` and the tracking handle), **full name** (required,
    shown in tables), **team** (required), and the models to access. There is no
-   budget/duration/purpose — this is an internal, uncosted system.
+   budget/duration/purpose — this is an internal, uncosted system. Submitted by
+   mistake? The applicant sees their own pending request in “track your keys”
+   (same Huawei ID, no password) with a **delete** button —
+   `POST /api/keys/applies/<id>/withdraw {owner}`. Self-service delete is
+   pending-only and owner-matched, so it can never touch a minted key.
 2. **Approve / reject** — one click in the admin section (password required).
    Approve calls LiteLLM `/key/generate` and shows the plaintext key **once** (copy it in
-   the modal). Only the sha256 hash is kept.
+   the modal). Only the sha256 hash is kept. Admins can also **delete** any
+   application record (`DELETE /api/keys/applies/<id>`, any status) — deleting
+   an approved one does NOT revoke the minted key.
 3. **Usage** — the user calls `http://<node>:30400/v1` (OpenAI-compatible) with
    `Authorization: Bearer <key>`.
 4. **Per-user stats** — spend, request count, prompt/completion tokens, last

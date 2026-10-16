@@ -41,7 +41,7 @@ BUSY_UTIL_PCT = float(os.environ.get("BUSY_UTIL_PCT", "5"))            # util th
 BUSY_HBM_MARGIN_MB = float(os.environ.get("BUSY_HBM_MARGIN_MB", "4096"))  # hbm above baseline
 BASELINE_HBM_MB = float(os.environ.get("BASELINE_HBM_MB", "3000"))     # per-device driver baseline
 AUTOLOAD_LABEL = "npu-ops.io/auto-load"
-UI_VERSION = "10"  # bump with every UI/API change; stale pages detect & self-reload
+UI_VERSION = "11"  # bump with every UI/API change; stale pages detect & self-reload
 # Access control: one password gates the NPU tab AND the key-admin actions.
 # Clients need no password (apply + track-by-name are public).
 ADMIN_PASSWORD = os.environ.get("NPU_OPS_ADMIN_PASSWORD", "")
@@ -651,12 +651,22 @@ def keys_apply(body: dict = {}):
 
 
 @app.get("/api/keys/applies")
-def keys_applies(request: Request):
-    _require_auth(request)  # pending approvals are admin-only
+def keys_applies(request: Request, owner: Optional[str] = None):
+    """Admins see every application. Anonymous callers may pass ?owner=<name>
+    to list their own PENDING applications (used by the self-service withdraw
+    button) — same trust model as track-by-owner."""
+    authed = _valid_token(_auth_token(request))
+    if not authed and not owner:
+        _require_auth(request)
     try:
-        return {"applies": kkeys.list_applies()}
+        applies = kkeys.list_applies()
     except Exception as e:
         raise HTTPException(500, f"failed to list applications: {e}")
+    if not authed:
+        o = owner.strip().lower()
+        applies = [a for a in applies if a.get("status") == "pending"
+                   and str(a.get("owner") or "").strip().lower() == o]
+    return {"applies": applies, "admin": authed, "ui_version": UI_VERSION}
 
 
 @app.post("/api/keys/applies/{rid}/approve")
@@ -680,6 +690,31 @@ async def keys_reject(rid, request: Request):
     except kkeys.KeysError as e:
         raise HTTPException(400, str(e))
     record_action("keys", f"reject/{req['owner']}", "ui", True, rid)
+    return {"ok": True, "apply": req}
+
+
+@app.post("/api/keys/applies/{rid}/withdraw")
+async def keys_withdraw(rid, body: dict = {}):
+    """Self-service (no password): applicant deletes their own pending
+    application, identified by Huawei ID like the tracker."""
+    try:
+        req = await asyncio.to_thread(kkeys.withdraw_apply, rid, body.get("owner"))
+    except kkeys.KeysError as e:
+        raise HTTPException(400, str(e))
+    record_action("keys", f"withdraw/{req.get('owner')}", "ui", True, rid)
+    return {"ok": True, "apply": req}
+
+
+@app.delete("/api/keys/applies/{rid}")
+async def keys_delete_apply(rid, request: Request):
+    """Admin: permanently remove an application record (any status). Does not
+    revoke a minted key — that stays a separate explicit action."""
+    _require_auth(request)
+    try:
+        req = await asyncio.to_thread(kkeys.delete_apply, rid)
+    except kkeys.KeysError as e:
+        raise HTTPException(400, str(e))
+    record_action("keys", f"delete/{req.get('owner')}", "ui", True, rid)
     return {"ok": True, "apply": req}
 
 

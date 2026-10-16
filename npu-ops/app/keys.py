@@ -356,3 +356,40 @@ def reject_apply(rid):
     req["decided"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     write_applies(doc)
     return req
+
+
+def withdraw_apply(rid, owner):
+    """Self-service: the applicant removes their own still-pending application
+    (e.g. submitted by mistake). No auth — same trust model as track-by-owner:
+    anonymous callers identify by Huawei ID. Only pending records are
+    eligible, so nothing already minted can be lost this way."""
+    o = str(owner or "").strip().lower()
+    if not o:
+        raise KeysError("owner is required")
+    doc = read_applies()
+    req = doc.get(rid)
+    if not req:
+        raise KeysError(f"unknown application {rid}")
+    if req.get("status") != "pending":
+        raise KeysError(f"application is {req.get('status')}, not pending — "
+                        "contact an admin to remove it")
+    if str(req.get("owner") or "").strip().lower() != o:
+        raise KeysError("this application belongs to a different Huawei ID")
+    del doc[rid]
+    write_applies(doc)
+    log.info("withdrawn %s (self-service) by %s", rid, o)
+    return req
+
+
+def delete_apply(rid):
+    """Admin: permanently remove an application record (any status). A minted
+    key is NOT touched — revoke it separately in the keys table if needed."""
+    doc = read_applies()
+    req = doc.get(rid)
+    if not req:
+        raise KeysError(f"unknown application {rid}")
+    del doc[rid]
+    write_applies(doc)
+    log.info("deleted %s (%s, %s) by admin", rid,
+             req.get("owner"), req.get("status"))
+    return req
