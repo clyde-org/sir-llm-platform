@@ -4,6 +4,7 @@ Self-hosted LLM serving: **Qwen3.8-27B** on **Huawei Ascend 910B NPUs** —
 **vLLM** + KV-aware router + **LiteLLM** gateway, Prometheus/Grafana
 monitoring. Client how-tos:
 [claude-code](claude-code/README.md) · [pi](pi/README.md) ·
+[opencode](opencode/README.md) ·
 [deepseek-harness](deepseek-harness/README.md) ·
 [monitoring](monitoring/README.md).
 

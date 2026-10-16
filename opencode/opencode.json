@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "sirlab": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "SIR Lab",
+      "options": {
+        "baseURL": "http://<NODE_IP>:30400/v1",
+        "apiKey": "YOUR-API-KEY"
+      },
+      "models": {
+        "qwen3.8-27b": {
+          "name": "Qwen3.8 27B",
+          "limit": { "context": 131072, "output": 8192 }
+        },
+        "qwen3.8-27b-131k": {
+          "name": "Qwen3.8 27B (131k context, 32G pool)",
+          "limit": { "context": 131072, "output": 8192 }
+        },
+        "qwen3.8-27b-262k": {
+          "name": "Qwen3.8 27B (262k context, 64G pool)",
+          "limit": { "context": 262144, "output": 8192 }
+        }
+      }
+    }
+  },
+  "model": "sirlab/qwen3.8-27b"
+}
