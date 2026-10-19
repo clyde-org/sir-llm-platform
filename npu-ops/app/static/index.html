@@ -302,7 +302,7 @@
 <div id="toast"></div>
 <script>
 "use strict";
-const UI_VERSION = "11";  // keep in sync with backend UI_VERSION
+const UI_VERSION = "12";  // keep in sync with backend UI_VERSION
 const ROUTE = (location.pathname.replace(/\/+$/, "") || "/");
 const VIEW = {"/": "home", "/npus": "npus", "/keys": "keys"}[ROUTE] || "home";
 const STATUS_COLOR = {FREE:"#2ea043", BUSY:"#388bfd", DUMMY:"#d29922",
@@ -326,8 +326,13 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const giB = mb => (mb/1024).toFixed(1);
 const ago = ts => { if(!ts) return "?"; const s=(Date.now()/1000-ts)|0;
-  if(s<90) return s+"s ago"; if(s<5400) return (s/60)|0+"m ago";
-  if(s<172800) return (s/3600)|0+"h"+((s%3600)/60|0)+"m ago"; return (s/86400)|0+"d ago"; };
+  if(s<10) return "just now";
+  if(s<60) return s+"s ago";
+  if(s<3600) return ((s/60)|0)+"m ago";
+  if(s<86400) return ((s/3600)|0)+"h "+(((s%3600)/60)|0)+"m ago";
+  if(s<604800) return ((s/86400)|0)+"d "+(((s%86400)/3600)|0)+"h ago";
+  if(s<2592000) return ((s/604800)|0)+"w "+(((s%604800)/86400)|0)+"d ago";
+  return ((s/2592000)|0)+"mo ago"; };
 const durH = s => { s=Math.max(0,s|0); return (s/3600|0)+"h"+((s%3600)/60|0)+"m"; };
 
 function toast(msg, cls) {
