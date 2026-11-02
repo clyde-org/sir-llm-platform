@@ -24,10 +24,11 @@ Verify:
 ```bash
 opencode run "Reply with PONG"                    # 131k pool (default)
 opencode run -m sirlab/qwen3.8-27b-262k "Reply with PONG"   # 262k pool
+opencode run -m sirlab/dsv4 "Reply with PONG"     # DeepSeek V4 Flash (133k)
 ```
 
 Then just run `opencode` in your project for the TUI. Model picker:
-`sirlab / qwen3.8-27b{,-131k,-262k}`.
+`sirlab / qwen3.8-27b{,-131k,-262k}, dsv4`.
 
 ## Key values (and why stock defaults break)
 
@@ -35,7 +36,7 @@ Then just run `opencode` in your project for the TUI. Model picker:
 |------|-------|-------|-----|
 | opencode.json | `provider.sirlab.npm` | `@ai-sdk/openai-compatible` | opencode drives custom providers through AI SDK packages; LiteLLM serves the OpenAI route |
 | opencode.json | `options.baseURL` | `http://<NODE_IP>:30400/v1` | any cluster node; LiteLLM, OpenAI-compatible route |
-| opencode.json | `options.apiKey` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (**not** an OpenAI key); the shared lab master key also works |
+| opencode.json | `options.apiKey` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (**not** an OpenAI key) |
 | opencode.json | `models.*.limit.context` | `131072` / `262144` | the real vLLM limit per pool |
 | opencode.json | `models.*.limit.output` | `8192` | **do not raise** — matches the platform's per-request output budget |
 | opencode.json | `model` | `sirlab/qwen3.8-27b` | new sessions start on the 131k pool |
@@ -44,7 +45,7 @@ Then just run `opencode` in your project for the TUI. Model picker:
 
 - The pool is picked by the **model name**, exactly like pi and Claude Code:
   `qwen3.8-27b` / `qwen3.8-27b-131k` → 131k pool, `qwen3.8-27b-262k` → 262k
-  pool. One base URL for both.
+  pool, `dsv4` → DeepSeek-V4-Flash (133k, text only). One base URL for all.
 - `~/.config/opencode/opencode.json` is the **global** config; an
   `opencode.json` in a project root overrides it for that project (e.g. pin a
   different default model per repo).

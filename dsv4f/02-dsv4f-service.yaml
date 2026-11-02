@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dsv4f
+  namespace: sir-llm-platform
+  labels:
+    app: dsv4f
+spec:
+  selector:
+    app: dsv4f
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepseek-v4-flash
+  namespace: sir-llm-platform
+  labels:
+    app: deepseek-v4-flash
+    model: deepseek-v4-flash
+spec:
+  selector:
+    model: deepseek-v4-flash
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

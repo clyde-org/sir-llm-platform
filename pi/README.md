@@ -18,9 +18,9 @@ cp pi/settings.json  ~/.pi/agent/settings.json
 Then put **your own API key** in `~/.pi/agent/models.json` (field `apiKey`)
 and replace **`<NODE_IP>`** in `baseUrl` with a cluster node IP (lab network,
 ask an admin). Request a key at `http://<NODE_IP>:30410/keys` (admin approves;
-the key is shown once, copy it in the modal). The templates ship with the
-shared lab master key so they work out of the box, but a personal key is what
-you want: your requests get attributed to you.
+the key is shown once, copy it in the modal). You need your own key — the
+shared lab master key was retired for client use (2026-10-19) — and a
+personal key also gets you attribution:
 
 If `~/.pi/agent/models.json` already has other providers, **merge** the
 `sirlab` entry instead of overwriting.
@@ -40,11 +40,12 @@ session (live-editable, no restart).
 | File | Field | Value | Why |
 |------|-------|-------|-----|
 | models.json | `baseUrl` | `http://<NODE_IP>:30400/v1` | any cluster node; LiteLLM, OpenAI-compatible route |
-| models.json | `apiKey` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (self-service request + admin approve); the shared lab master key also works |
-| models.json | model ids | `qwen3.8-27b`, `…-131k`, `…-262k` | same weights, two pools (32G / 64G HBM); the pool is picked by the model name |
+| models.json | `apiKey` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (self-service request + admin approve) |
+| models.json | model ids | `qwen3.8-27b`, `…-131k`, `…-262k`, `dsv4` | same weights, two pools (32G / 64G HBM) + DeepSeek-V4-Flash (node3); the pool is picked by the model name |
 | models.json | `contextWindow` | `131072` / `262144` | the real vLLM limit per pool |
 | models.json | `maxTokens` | `8192` | **do not raise** — pi's input wall is `contextWindow − maxTokens`; stock values put it at ~33k and long sessions die there |
 | settings.json | `defaultModel` | `qwen3.8-27b-131k` | new sessions start on the 131k pool |
+| models.json | `dsv4` per-model `compat` | `thinkingFormat: chat-template` | DeepSeek V4 Flash: thinking is toggled via `chat_template_kwargs.thinking` — vLLM's template ignores top-level `thinking` and LiteLLM rejects it, so it can't reuse the provider-level qwen format |
 | settings.json | `defaultThinkingLevel` | `high` | Qwen3 thinking budget |
 | settings.json | `compaction.reserveTokens` | `32768` | compaction triggers at 98,304 tokens — well before the 122,880 input wall |
 | settings.json | `compaction.keepRecentTokens` | `20000` | recent context kept verbatim around the cut point |

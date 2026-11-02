@@ -24,9 +24,8 @@ Verify: `claude -p "Reply with PONG"`
 
 Then set **`ANTHROPIC_API_KEY` to your own API key** — request one at
 `http://<NODE_IP>:30410/keys` (admin approves; the key is shown once, copy it
-in the modal). The template ships with the shared lab master key so it works
-out of the box, but a personal key is what you want: your requests get
-attributed to you.
+in the modal). You need your own key — the shared lab master key was retired
+for client use (2026-10-19) — and a personal key also gets you attribution:
 
 ## What the template sets
 
@@ -38,7 +37,7 @@ attributed to you.
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `qwen3.8-27b-262k` | Sonnet tier → 262k pool (long-context work) |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` | `qwen3.8-27b` | → 131k pool |
 | `"model"` | `sonnet` | resolves to `ANTHROPIC_DEFAULT_SONNET_MODEL` → 262k pool (long-context default); pin `"qwen3.8-27b"` instead to stay on 131k |
-| `ANTHROPIC_API_KEY` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (**not** an Anthropic key); the shared lab master key also works |
+| `ANTHROPIC_API_KEY` | your key from `http://<NODE_IP>:30410/keys` | per-user LiteLLM virtual key (**not** an Anthropic key) |
 | `CLAUDE_CODE_DISABLE_1M_CONTEXT` | `1` | suppresses the spurious `[1m]` badge on custom endpoints |
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `131072` | **required** — see below |
 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `8192` | matches the platform's per-request output budget |
@@ -51,6 +50,12 @@ qwen3.8-27b           Custom Opus model      (131k pool)
 qwen3.8-27b-262k      Custom Sonnet model    (262k pool)
 qwen3.8-27b           Custom Haiku model     (131k pool)
 ```
+
+**DeepSeek-V4-Flash (`dsv4`)**: also routable on `/v1/messages` — set
+`"ANTHROPIC_MODEL": "dsv4"` (and restart the session) to run on it; it's a
+133,120-context text-only MoE, so keep
+`"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "133120"` (≈110k trigger) for dsv4
+sessions.
 
 ## Why `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is required
 
@@ -73,8 +78,8 @@ trigger at ≈110k, safely under the limit on either pool.
 
 ## Notes
 
-- The key is the shared lab master key, documented throughout this repo; the
-  endpoint is on the lab network only.
+- The key must be your own personal key (the shared lab master key is
+  admin/infra-only); the endpoint is on the lab network only.
 - The template sets `NO_PROXY` to include the node IP (direct access). If your
   machine reaches the cluster only through a local proxy
   (`127.0.0.1:3128`), remove the node IP from `NO_PROXY`; with no proxy at

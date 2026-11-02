@@ -1,8 +1,8 @@
 # SIR LLM Platform
 
-Self-hosted LLM serving: **Qwen3.8-27B** on **Huawei Ascend 910B NPUs** —
-**vLLM** + KV-aware router + **LiteLLM** gateway, Prometheus/Grafana
-monitoring. Client how-tos:
+Self-hosted LLM serving: **Qwen3.8-27B** and **DeepSeek-V4-Flash** on
+**Huawei Ascend 910B NPUs** — **vLLM** + KV-aware router + **LiteLLM
+gateway**, Prometheus/Grafana monitoring. Client how-tos:
 [pi](pi/README.md) · [opencode](opencode/README.md) ·
 [claude-code](claude-code/README.md) ·
 [deepseek-harness](deepseek-harness/README.md) ·
@@ -18,6 +18,14 @@ the pool — one base URL on both API paths.
 | `qwen3.8-27b` | phase-1 (4 pods × TP=4, 910B) | 131,072 — default |
 | `qwen3.8-27b-262k` | phase-2 (910B3 64 GB HBM) | 262,144 — long context, off by default |
 | `qwen3.8-27b-131k` | phase-1 alias | 131,072 — OpenAI path only |
+| `dsv4` | DeepSeek-V4-Flash W8A8 (node3, 8×910B3 TP=8) | 133,120 — text only, MoE, MTP spec-decode |
+
+`dsv4` is a single push-mode instance: it sits **outside the KV router**
+(LiteLLM routes to it directly; the router's `/v1/messages` pass-through
+reaches it via `ANTHROPIC_UPSTREAMS`). Deployment: [`dsv4f/`](dsv4f/) —
+context is capped at 133,120 by the measured KV budget (195,036 tokens
+total across the 8 NPUs; 1M needs ~630 GB of KV, which this hardware
+doesn't have).
 
 ## Architecture
 
@@ -38,6 +46,8 @@ flowchart TD
 
     R[("Redis :6379<br/>queue state")]
 
+    DSV4["DeepSeek-V4-Flash (node3)<br/>dsv4f pod, TP=8 :8000"]
+
     subgraph P1["Phase-1 pool · 131k<br/>qwen3.8-27b"]
         P1S["kv-sidecar (pull) :9000"]
         P1V["vLLM x4 pods, TP=4 :8200"]
@@ -55,6 +65,8 @@ flowchart TD
     GUI --> LT
     LT -->|"via router"| RT
     LT -->|"Anthropic pass-through"| RT
+    LT -->|"direct (model dsv4)"| DSV4
+    AN -.->|"dsv4 via router pass-through"| DSV4
     RT <--> R
     RT <-->|"/pull, /result_submit"| P1S
     RT <-->|"/pull, /result_submit"| P2S
@@ -71,7 +83,7 @@ flowchart TD
   - Anthropic (`/v1/messages`): `http://<NODE_IP>:30400`
 - **API key** — apply at `http://<NODE_IP>:30410/keys`, then contact
   **Sheriffo (s00628324)** to approve your key
-- **Pool** — picked by the `model` field: `qwen3.8-27b` (131k, default) · `qwen3.8-27b-262k` (262k)
+- **Pool** — picked by the `model` field: `qwen3.8-27b` (131k, default) · `qwen3.8-27b-262k` (262k) · `dsv4` (DeepSeek-V4-Flash, 133k, text only)
 - **Verify**:
 
 ```bash
@@ -129,6 +141,21 @@ pi -p "Reply with PONG"    # verify
           "input": ["text", "image"],
           "contextWindow": 262144,
           "maxTokens": 8192
+        },
+        {
+          "id": "dsv4",
+          "name": "DeepSeek V4 Flash (W8A8, 133k context)",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 133120,
+          "maxTokens": 16384,
+          "compat": {
+            "supportsReasoningEffort": false,
+            "thinkingFormat": "chat-template",
+            "chatTemplateKwargs": {
+              "thinking": { "$var": "thinking.enabled" }
+            }
+          }
         }
       ]
     }
@@ -154,8 +181,13 @@ pi -p "Reply with PONG"    # verify
 }
 ```
 
-- don't raise `maxTokens: 8192` — pi's input wall is
-  `contextWindow − maxTokens`
+- don't raise `maxTokens: 8192` on the qwen models — pi's input wall is
+  `contextWindow − maxTokens` (`dsv4` ships at 16384: its 133k window
+  leaves an ~117k input wall)
+- `dsv4` uses **per-model** `compat` (thinking via
+  `chat_template_kwargs.thinking`): vLLM's DeepSeek template ignores the
+  top-level `thinking` param and LiteLLM rejects it, so the provider-level
+  `qwen-chat-template` format must stay untouched
 - compaction triggers at ~98k → sessions run to ~122k input (262k pool:
   ~254k) and compact cleanly instead of failing with `prompt is too long`
 - `models.json` is reloaded when you open `/model` — live-edit, no restart
@@ -289,9 +321,11 @@ Managed in the **npu-ops** dashboard, **API keys** tab:
    (auth model, password rotation, REST API):
    [`npu-ops/README.md`](npu-ops/README.md).
 
-The shared master key (`litellm.masterKey` in `vllm-stack/values.yaml`)
-remains valid for admin/infra (LiteLLM
-admin UI, monitoring service monitors, chart defaults).
+The master key is **admin/infra only** (LiteLLM admin UI, npu-ops key
+management, monitoring scrapes) and must never be used in a client — it was
+retired for client use on 2026-10-19; use your personal key from
+`:30410/keys` above. It lives in the `litellm-config` ConfigMap plus the
+`npu-ops-litellm` and `litellm-bearer-token` secrets — never in this repo.
 
 ## Who is sending requests (LiteLLM observability)
 

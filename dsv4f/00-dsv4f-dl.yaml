@@ -1,0 +1,69 @@
+# One-shot: download DeepSeek-V4-Flash (159.6 GB, 51 files) from the Huawei
+# HF mirror into /home/data/models/DeepSeek-V4-Flash on the selected node.
+# Own pod (npu-node-agent is 1Gi-limited). Resumable: rerun to continue.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dsv4f-dl
+  namespace: sir-llm-platform
+spec:
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  nodeSelector:
+    kubernetes.io/hostname: node3
+  restartPolicy: Never
+  containers:
+    - name: dl
+      image: ghcr.io/fanbondi/npu-ops-agent:v1-b9991056
+      imagePullPolicy: IfNotPresent
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          cp /hostfiles/dsv4f-files.txt /host/tmp/dsv4f-files.txt
+          chroot /host sh -c '
+            set -u
+            BASE="http://mirrors.tools.huawei.com/huggingface/deepseek-ai/DeepSeek-V4-Flash/resolve/main"
+            DIR="/home/data/models/DeepSeek-V4-Flash"
+            LOG="/tmp/dsv4f-dl.log"
+            mkdir -p "$DIR"
+            echo "[$(date)] start on $(hostname)" > "$LOG"
+            awk "{print \$2}" /tmp/dsv4f-files.txt | xargs -P 4 -I{} sh -c '"'"'
+              f="{}"
+              i=0
+              while [ $i -lt 40 ]; do
+                curl -fsSL --connect-timeout 20 -C - -o "$0/$f" "$1/$f" && break
+                i=$((i+1)); sleep 3
+              done
+              if [ -f "$0/$f" ]; then echo "[$(date)] OK $f"; else echo "[$(date)] FAIL $f"; fi
+            '"'"' "$DIR" "$BASE" >> "$LOG" 2>&1
+            FAIL=0
+            while read -r sz f; do
+              a=$(stat -c%s "$DIR/$f" 2>/dev/null || echo 0)
+              if [ "$a" != "$sz" ]; then echo "[$(date)] SIZE-MISMATCH $f want=$sz got=$a" >> "$LOG"; FAIL=1; fi
+            done < /tmp/dsv4f-files.txt
+            if [ $FAIL -eq 0 ]; then touch "$DIR/.download-complete"; echo "[$(date)] COMPLETE" >> "$LOG"; else echo "[$(date)] INCOMPLETE" >> "$LOG"; fi
+          '
+          echo DL-POD-DONE
+      resources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+      volumeMounts:
+        - name: host-root
+          mountPath: /host
+        - name: files
+          mountPath: /hostfiles
+          readOnly: true
+  volumes:
+    - name: host-root
+      hostPath:
+        path: /
+        type: Directory
+    - name: files
+      configMap:
+        name: dsv4f-files

@@ -20,6 +20,10 @@
         "qwen3.8-27b-262k": {
           "name": "Qwen3.8 27B (262k context, 64G pool)",
           "limit": { "context": 262144, "output": 8192 }
+        },
+        "dsv4": {
+          "name": "DeepSeek V4 Flash (W8A8, 133k context)",
+          "limit": { "context": 133120, "output": 16384 }
         }
       }
     }
