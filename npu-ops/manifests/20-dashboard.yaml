@@ -86,7 +86,7 @@ spec:
         - name: ghcr-fanbondi
       containers:
         - name: dashboard
-          image: ghcr.io/fanbondi/npu-ops:v1-f7e73483
+          image: ghcr.io/fanbondi/npu-ops:v1-cf0c396a
           imagePullPolicy: Always
           env:
             - name: AUTOLOAD_AFTER_HOURS
