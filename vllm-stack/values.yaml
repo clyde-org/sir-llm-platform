@@ -134,6 +134,42 @@ litellm:
   anthropicMessagesTarget262k: "http://vllm-qwen3-8b-p2:8200/v1/messages"
   detailedDebug: false
 
+# KEDA event-driven autoscaling for the main vLLM pool (templates/11-keda.yaml).
+# Requires the KEDA operator to be installed in the cluster; set enabled=false
+# otherwise (the chart's keda manifests are the only KEDA-dependent part).
+keda:
+  enabled: true
+  prometheus:
+    # In-cluster address of the monitoring-stack Prometheus (basic auth on).
+    serverAddress: "http://prometheus-kube-prometheus-prometheus.monitoring:9090"
+    username: "admin"
+    password: "prometheus-admin"   # same admin pair the ops scripts use
+  mainPool:
+    # Phase-1 capacity today: 2 nodes x 2 pods (TP=4, 8 NPU/node) => max 4.
+    # PINNED at 4 (min == max) per lab policy: the 131k pool stays up on both
+    # phase-1 nodes and no idle capacity is released. When a new phase-1 node
+    # is added (label llm-pool=qwen-38b-phase1), raise min AND max together
+    # (+2 per node, e.g. 6/6) — the packing affinity fills existing nodes
+    # first, so the new node only takes pods once others are full.
+    minReplicas: 4
+    maxReplicas: 4
+    # KEDA prometheus trigger uses offset semantics: desired = value - threshold
+    # (trigger inactive while value <= threshold). Tuned from 24h of data:
+    # litellm_in_flight_requests max=4 / avg=1.4, router queue never left 0.
+    # in_flight>=5 adds a pod, in_flight>=6 saturates at max.
+    inFlightThreshold: 2
+    # Safety net: 2+ requests waiting in the router's central queue scales up
+    # no matter what the in-flight count says.
+    queueThreshold: 2
+    # Wait this long after the last scale action before scaling again.
+    cooldownSeconds: 300
+    # Only scale down after the idle signal has been stable for this long.
+    # Keep this ABOVE the vLLM pod startup cost (~5-6 min model load +
+    # kv-sidecar liveness retries): the HPA uses the max recommendation in
+    # this window, so a window shorter than pod boot kills freshly scaled-up
+    # pods mid-boot after short load bursts (observed 2026-10-20).
+    scaleDownStabilizationSeconds: 900
+
 # Postgres for LiteLLM (admin UI + persistent request/spend logs + virtual keys).
 #
 # The LiteLLM admin UI (http://<node>:30400/ui, login admin / master key)

@@ -1,0 +1,86 @@
+{{- if .Values.keda.enabled }}
+# KEDA event-driven autoscaling for the main vLLM pool.
+#
+# Prereq: KEDA operator installed in the cluster (any namespace; it watches
+# all). Set keda.enabled=false on clusters without it.
+#
+# The clyde kv-router discovers vLLM replicas by label selector (see the
+# model-registry ConfigMap), so replicas added by KEDA get traffic
+# automatically — no router reconfig.
+#
+# Signals (two triggers; KEDA takes the max of their results):
+#   litellm_in_flight_requests{ns}
+#     concurrent requests through the proxy — leading indicator.
+#     24h observed: max=4, avg=1.4.
+#   router_central_queue_length_by_model{ns, model=<main>}
+#     requests waiting for a free instance — safety net; sustained
+#     queuing means the pool is saturated regardless of the count above.
+#
+# Prometheus (ns monitoring) requires basic auth — the TriggerAuthentication
+# below supplies username/password.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keda-prom-creds
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: keda-prom-creds
+stringData:
+  username: {{ .Values.keda.prometheus.username | quote }}
+  password: {{ .Values.keda.prometheus.password | quote }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-prom-basic
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: keda-prom-basic
+spec:
+  secretTargetRef:
+    - parameter: username
+      name: keda-prom-creds
+      key: username
+    - parameter: password
+      name: keda-prom-creds
+      key: password
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .Values.vllm.serviceName }}-keda
+  namespace: {{ include "vllm-stack.namespace" . }}
+  labels:
+    app: {{ .Values.vllm.serviceName }}
+spec:
+  scaleTargetRef:
+    name: {{ .Values.vllm.serviceName }}
+  minReplicaCount: {{ .Values.keda.mainPool.minReplicas }}
+  maxReplicaCount: {{ .Values.keda.mainPool.maxReplicas }}
+  # Grace between the last scale action and the next one KEDA may take.
+  cooldownPeriod: {{ .Values.keda.mainPool.cooldownSeconds }}
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: {{ .Values.keda.prometheus.serverAddress | quote }}
+        # Offset semantics: desired = value - threshold (inactive below).
+        query: 'litellm_in_flight_requests{namespace="{{ include "vllm-stack.namespace" . }}"}'
+        threshold: {{ .Values.keda.mainPool.inFlightThreshold | quote }}
+      authenticationRef:
+        name: keda-prom-basic
+    - type: prometheus
+      metadata:
+        serverAddress: {{ .Values.keda.prometheus.serverAddress | quote }}
+        query: 'router_central_queue_length_by_model{namespace="{{ include "vllm-stack.namespace" . }}",model="{{ .Values.model.servedName }}"}'
+        threshold: {{ .Values.keda.mainPool.queueThreshold | quote }}
+      authenticationRef:
+        name: keda-prom-basic
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0   # react to load immediately
+        scaleDown:
+          # Only release a pod after the idle signal has held this long.
+          stabilizationWindowSeconds: {{ .Values.keda.mainPool.scaleDownStabilizationSeconds }}
+{{- end }}
