@@ -1,0 +1,4 @@
+ts,tag,model,path,seq,status,ok,err,ttft_s,tpot_s,e2e_s,prompt_tokens,completion_tokens,stream,est
+2026-10-06T15:13:51Z,smoke-loadgen,qwen3.8-27b,/v1/chat/completions,1,200,True,,1.266,0.01769,1.408,14,9,True,False
+2026-10-06T15:13:52Z,smoke-loadgen,qwen3.8-27b,/v1/chat/completions,2,200,True,,,,1.42,15,,True,False
+2026-10-06T15:13:53Z,smoke-loadgen,qwen3.8-27b,/v1/chat/completions,3,200,True,,1.3862,0.02217,1.431,17,3,True,False

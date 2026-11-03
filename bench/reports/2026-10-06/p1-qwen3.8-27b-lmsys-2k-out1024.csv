@@ -1,0 +1,4 @@
+ts,tag,model,path,seq,status,ok,err,ttft_s,tpot_s,e2e_s,prompt_tokens,completion_tokens,stream,est
+2026-10-06T15:35:49Z,p1-qwen3.8-27b-lmsys-2k-out1024,qwen3.8-27b,/v1/chat/completions,1,200,True,,2.3014,0.03906,15.074,1689,328,True,False
+2026-10-06T15:36:05Z,p1-qwen3.8-27b-lmsys-2k-out1024,qwen3.8-27b,/v1/chat/completions,2,200,True,,11.5249,0.01497,15.567,1947,271,True,False
+2026-10-06T15:36:21Z,p1-qwen3.8-27b-lmsys-2k-out1024,qwen3.8-27b,/v1/chat/completions,3,200,True,,14.6198,0.0135,15.902,1668,96,True,False

@@ -1,0 +1,2 @@
+ts,tag,model,path,seq,status,ok,err,ttft_s,tpot_s,e2e_s,prompt_tokens,completion_tokens,stream,est
+2026-10-06T15:45:04Z,p1-qwen3.8-27b-262k-lmsys-16k-out1024,qwen3.8-27b-262k,/v1/chat/completions,1,200,True,,9.1363,0.03217,17.982,14183,276,True,False

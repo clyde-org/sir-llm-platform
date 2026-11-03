@@ -1,0 +1,42 @@
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0424,
+  "out_tokens_per_s": 9.3,
+  "ttft_s": {
+    "p50": 8.9114,
+    "p95": 8.9114,
+    "p99": 8.9114
+  },
+  "tpot_s": {
+    "p50": 0.06702,
+    "p95": 0.06702,
+    "p99": 0.06702
+  },
+  "e2e_s": {
+    "p50": 23.59,
+    "p95": 23.59,
+    "p99": 23.59
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-16k-out1024",
+  "start": "2026-10-06T15:38:21Z",
+  "end": "2026-10-06T15:38:45Z",
+  "duration_s": 23.6,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-16k-out1024.csv"
+}

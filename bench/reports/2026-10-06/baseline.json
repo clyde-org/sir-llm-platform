@@ -1,0 +1,10 @@
+{
+  "router_queue": 0.0,
+  "router_admit_rps_5m": 0.017543859649122806,
+  "vllm_running": 2.0,
+  "vllm_kv_pct_max": 8.21917808219178,
+  "npu_aicore_pct_max": 100.0,
+  "npu_temp_max": 57.0,
+  "hbm_ecc_dbe_max": 0.0,
+  "gw_rps_5m": 0.021052631578947364
+}

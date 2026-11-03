@@ -1,0 +1,1321 @@
+=== p1-qwen3.8-27b-lmsys-512-out128 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-512.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.1305,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 7.24,
+    "p95": 8.396,
+    "p99": 8.499
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-512-out128",
+  "start": "2026-10-06T15:33:05Z",
+  "end": "2026-10-06T15:33:28Z",
+  "duration_s": 23.0,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-512-out128.csv"
+}
+=== p1-qwen3.8-27b-lmsys-512-out512 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-512.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0882,
+  "out_tokens_per_s": 0.9,
+  "ttft_s": {
+    "p50": 14.3528,
+    "p95": 14.3528,
+    "p99": 14.3528
+  },
+  "tpot_s": {
+    "p50": 0.0288,
+    "p95": 0.0288,
+    "p99": 0.0288
+  },
+  "e2e_s": {
+    "p50": 9.777,
+    "p95": 14.673,
+    "p99": 15.108
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-512-out512",
+  "start": "2026-10-06T15:33:28Z",
+  "end": "2026-10-06T15:34:02Z",
+  "duration_s": 34.0,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-512-out512.csv"
+}
+=== p1-qwen3.8-27b-lmsys-512-out1024 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-512.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0525,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 19.011,
+    "p95": 22.871,
+    "p99": 23.214
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-512-out1024",
+  "start": "2026-10-06T15:34:02Z",
+  "end": "2026-10-06T15:34:59Z",
+  "duration_s": 57.2,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-512-out1024.csv"
+}
+=== p1-qwen3.8-27b-lmsys-2k-out128 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-2k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.3465,
+  "out_tokens_per_s": 8.1,
+  "ttft_s": {
+    "p50": 1.6796,
+    "p95": 1.6796,
+    "p99": 1.6796
+  },
+  "tpot_s": {
+    "p50": 0.01541,
+    "p95": 0.01541,
+    "p99": 0.01541
+  },
+  "e2e_s": {
+    "p50": 2.914,
+    "p95": 2.992,
+    "p99": 2.999
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-2k-out128",
+  "start": "2026-10-06T15:34:59Z",
+  "end": "2026-10-06T15:35:08Z",
+  "duration_s": 8.7,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-2k-out128.csv"
+}
+=== p1-qwen3.8-27b-lmsys-2k-out512 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-2k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.1144,
+  "out_tokens_per_s": 15.2,
+  "ttft_s": {
+    "p50": 2.3351,
+    "p95": 2.3351,
+    "p99": 2.3351
+  },
+  "tpot_s": {
+    "p50": 0.01408,
+    "p95": 0.01408,
+    "p99": 0.01408
+  },
+  "e2e_s": {
+    "p50": 8.581,
+    "p95": 9.601,
+    "p99": 9.691
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-2k-out512",
+  "start": "2026-10-06T15:35:08Z",
+  "end": "2026-10-06T15:35:34Z",
+  "duration_s": 26.2,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-2k-out512.csv"
+}
+=== p1-qwen3.8-27b-lmsys-2k-out1024 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-2k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0645,
+  "out_tokens_per_s": 14.9,
+  "ttft_s": {
+    "p50": 11.5249,
+    "p95": 14.3103,
+    "p99": 14.5579
+  },
+  "tpot_s": {
+    "p50": 0.01497,
+    "p95": 0.03665,
+    "p99": 0.03858
+  },
+  "e2e_s": {
+    "p50": 15.567,
+    "p95": 15.868,
+    "p99": 15.895
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-2k-out1024",
+  "start": "2026-10-06T15:35:34Z",
+  "end": "2026-10-06T15:36:21Z",
+  "duration_s": 46.5,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-2k-out1024.csv"
+}
+=== p1-qwen3.8-27b-lmsys-8k-out128 ===
+[pool] 154 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-8k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.2434,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 3.999,
+    "p95": 4.368,
+    "p99": 4.401
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-8k-out128",
+  "start": "2026-10-06T15:36:21Z",
+  "end": "2026-10-06T15:36:33Z",
+  "duration_s": 12.3,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-8k-out128.csv"
+}
+=== p1-qwen3.8-27b-lmsys-8k-out512 ===
+[pool] 154 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-8k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0931,
+  "out_tokens_per_s": 7.9,
+  "ttft_s": {
+    "p50": 5.9712,
+    "p95": 5.9712,
+    "p99": 5.9712
+  },
+  "tpot_s": {
+    "p50": 0.01839,
+    "p95": 0.01839,
+    "p99": 0.01839
+  },
+  "e2e_s": {
+    "p50": 10.624,
+    "p95": 11.114,
+    "p99": 11.158
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-8k-out512",
+  "start": "2026-10-06T15:36:33Z",
+  "end": "2026-10-06T15:37:05Z",
+  "duration_s": 32.2,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-8k-out512.csv"
+}
+=== p1-qwen3.8-27b-lmsys-8k-out1024 ===
+[pool] 154 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-8k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.051,
+  "out_tokens_per_s": 27.3,
+  "ttft_s": {
+    "p50": 6.6963,
+    "p95": 18.0681,
+    "p99": 19.0789
+  },
+  "tpot_s": {
+    "p50": 0.02076,
+    "p95": 0.02168,
+    "p99": 0.02176
+  },
+  "e2e_s": {
+    "p50": 18.108,
+    "p95": 22.385,
+    "p99": 22.765
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-8k-out1024",
+  "start": "2026-10-06T15:37:06Z",
+  "end": "2026-10-06T15:38:04Z",
+  "duration_s": 58.8,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-8k-out1024.csv"
+}
+=== p1-qwen3.8-27b-lmsys-16k-out128 ===
+[pool] 39 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-16k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.1797,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 5.563,
+    "p95": 5.563,
+    "p99": 5.563
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-16k-out128",
+  "start": "2026-10-06T15:38:04Z",
+  "end": "2026-10-06T15:38:10Z",
+  "duration_s": 5.6,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-16k-out128.csv"
+}
+=== p1-qwen3.8-27b-lmsys-16k-out512 ===
+[pool] 39 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-16k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0896,
+  "out_tokens_per_s": 20.5,
+  "ttft_s": {
+    "p50": 7.4201,
+    "p95": 7.4201,
+    "p99": 7.4201
+  },
+  "tpot_s": {
+    "p50": 0.01641,
+    "p95": 0.01641,
+    "p99": 0.01641
+  },
+  "e2e_s": {
+    "p50": 11.162,
+    "p95": 11.162,
+    "p99": 11.162
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-16k-out512",
+  "start": "2026-10-06T15:38:10Z",
+  "end": "2026-10-06T15:38:21Z",
+  "duration_s": 11.2,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-16k-out512.csv"
+}
+=== p1-qwen3.8-27b-lmsys-16k-out1024 ===
+[pool] 39 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-16k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0424,
+  "out_tokens_per_s": 9.3,
+  "ttft_s": {
+    "p50": 8.9114,
+    "p95": 8.9114,
+    "p99": 8.9114
+  },
+  "tpot_s": {
+    "p50": 0.06702,
+    "p95": 0.06702,
+    "p99": 0.06702
+  },
+  "e2e_s": {
+    "p50": 23.59,
+    "p95": 23.59,
+    "p99": 23.59
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-16k-out1024",
+  "start": "2026-10-06T15:38:21Z",
+  "end": "2026-10-06T15:38:45Z",
+  "duration_s": 23.6,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-16k-out1024.csv"
+}
+=== p1-qwen3.8-27b-lmsys-32k-out128 ===
+[pool] 9 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-32k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.1145,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 8.736,
+    "p95": 8.736,
+    "p99": 8.736
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-32k-out128",
+  "start": "2026-10-06T15:38:45Z",
+  "end": "2026-10-06T15:38:54Z",
+  "duration_s": 8.7,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-32k-out128.csv"
+}
+=== p1-qwen3.8-27b-lmsys-32k-out512 ===
+[pool] 9 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-32k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0652,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 15.333,
+    "p95": 15.333,
+    "p99": 15.333
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-32k-out512",
+  "start": "2026-10-06T15:38:54Z",
+  "end": "2026-10-06T15:39:09Z",
+  "duration_s": 15.3,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-32k-out512.csv"
+}
+=== p1-qwen3.8-27b-lmsys-32k-out1024 ===
+[pool] 9 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-32k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0406,
+  "out_tokens_per_s": 12.2,
+  "ttft_s": {
+    "p50": 18.728,
+    "p95": 18.728,
+    "p99": 18.728
+  },
+  "tpot_s": {
+    "p50": 0.01978,
+    "p95": 0.01978,
+    "p99": 0.01978
+  },
+  "e2e_s": {
+    "p50": 24.642,
+    "p95": 24.642,
+    "p99": 24.642
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-lmsys-32k-out1024",
+  "start": "2026-10-06T15:39:09Z",
+  "end": "2026-10-06T15:39:34Z",
+  "duration_s": 24.6,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-lmsys-32k-out1024.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-512-out128 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-512.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.1432,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 6.933,
+    "p95": 7.179,
+    "p99": 7.201
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-512-out128",
+  "start": "2026-10-06T15:39:34Z",
+  "end": "2026-10-06T15:39:55Z",
+  "duration_s": 21.0,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-512-out128.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-512-out512 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-512.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0979,
+  "out_tokens_per_s": 7.3,
+  "ttft_s": {
+    "p50": 4.969,
+    "p95": 4.969,
+    "p99": 4.969
+  },
+  "tpot_s": {
+    "p50": 0.02149,
+    "p95": 0.02149,
+    "p99": 0.02149
+  },
+  "e2e_s": {
+    "p50": 10.145,
+    "p95": 10.683,
+    "p99": 10.731
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-512-out512",
+  "start": "2026-10-06T15:39:55Z",
+  "end": "2026-10-06T15:40:26Z",
+  "duration_s": 30.6,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-512-out512.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-512-out1024 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-512.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0508,
+  "out_tokens_per_s": 9.7,
+  "ttft_s": {
+    "p50": 6.9438,
+    "p95": 6.9438,
+    "p99": 6.9438
+  },
+  "tpot_s": {
+    "p50": 0.01799,
+    "p95": 0.01799,
+    "p99": 0.01799
+  },
+  "e2e_s": {
+    "p50": 20.671,
+    "p95": 21.171,
+    "p99": 21.215
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-512-out1024",
+  "start": "2026-10-06T15:40:26Z",
+  "end": "2026-10-06T15:41:25Z",
+  "duration_s": 59.1,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-512-out1024.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-2k-out128 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-2k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.3697,
+  "out_tokens_per_s": 6.5,
+  "ttft_s": {
+    "p50": 2.0408,
+    "p95": 2.0408,
+    "p99": 2.0408
+  },
+  "tpot_s": {
+    "p50": 0.0124,
+    "p95": 0.0124,
+    "p99": 0.0124
+  },
+  "e2e_s": {
+    "p50": 2.685,
+    "p95": 2.764,
+    "p99": 2.771
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-2k-out128",
+  "start": "2026-10-06T15:41:25Z",
+  "end": "2026-10-06T15:41:33Z",
+  "duration_s": 8.1,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-2k-out128.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-2k-out512 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-2k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0981,
+  "out_tokens_per_s": 12.9,
+  "ttft_s": {
+    "p50": 6.4654,
+    "p95": 6.4654,
+    "p99": 6.4654
+  },
+  "tpot_s": {
+    "p50": 0.01655,
+    "p95": 0.01655,
+    "p99": 0.01655
+  },
+  "e2e_s": {
+    "p50": 9.063,
+    "p95": 12.566,
+    "p99": 12.877
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-2k-out512",
+  "start": "2026-10-06T15:41:33Z",
+  "end": "2026-10-06T15:42:04Z",
+  "duration_s": 30.6,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-2k-out512.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-2k-out1024 ===
+[pool] 300 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-2k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0654,
+  "out_tokens_per_s": 16.9,
+  "ttft_s": {
+    "p50": 6.8925,
+    "p95": 11.2065,
+    "p99": 11.5899
+  },
+  "tpot_s": {
+    "p50": 0.01973,
+    "p95": 0.02473,
+    "p99": 0.02517
+  },
+  "e2e_s": {
+    "p50": 15.865,
+    "p95": 15.97,
+    "p99": 15.98
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-2k-out1024",
+  "start": "2026-10-06T15:42:04Z",
+  "end": "2026-10-06T15:42:50Z",
+  "duration_s": 45.9,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-2k-out1024.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-8k-out128 ===
+[pool] 154 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-8k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.1945,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 3.735,
+    "p95": 7.572,
+    "p99": 7.913
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-8k-out128",
+  "start": "2026-10-06T15:42:50Z",
+  "end": "2026-10-06T15:43:05Z",
+  "duration_s": 15.4,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-8k-out128.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-8k-out512 ===
+[pool] 154 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-8k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0929,
+  "out_tokens_per_s": 16.2,
+  "ttft_s": {
+    "p50": 7.9258,
+    "p95": 8.925,
+    "p99": 9.0138
+  },
+  "tpot_s": {
+    "p50": 0.013,
+    "p95": 0.016,
+    "p99": 0.01626
+  },
+  "e2e_s": {
+    "p50": 9.51,
+    "p95": 13.244,
+    "p99": 13.576
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-8k-out512",
+  "start": "2026-10-06T15:43:05Z",
+  "end": "2026-10-06T15:43:38Z",
+  "duration_s": 32.3,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-8k-out512.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-8k-out1024 ===
+[pool] 154 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-8k.jsonl
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0569,
+  "out_tokens_per_s": 31.4,
+  "ttft_s": {
+    "p50": 7.7831,
+    "p95": 11.6882,
+    "p99": 12.0353
+  },
+  "tpot_s": {
+    "p50": 0.01691,
+    "p95": 0.01774,
+    "p99": 0.01781
+  },
+  "e2e_s": {
+    "p50": 17.86,
+    "p95": 18.392,
+    "p99": 18.439
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-8k-out1024",
+  "start": "2026-10-06T15:43:38Z",
+  "end": "2026-10-06T15:44:30Z",
+  "duration_s": 52.8,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-8k-out1024.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-16k-out128 ===
+[pool] 39 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-16k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.199,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 5.026,
+    "p95": 5.026,
+    "p99": 5.026
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-16k-out128",
+  "start": "2026-10-06T15:44:31Z",
+  "end": "2026-10-06T15:44:36Z",
+  "duration_s": 5.0,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-16k-out128.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-16k-out512 ===
+[pool] 39 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-16k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0935,
+  "out_tokens_per_s": 7.0,
+  "ttft_s": {
+    "p50": 9.5412,
+    "p95": 9.5412,
+    "p99": 9.5412
+  },
+  "tpot_s": {
+    "p50": 0.01559,
+    "p95": 0.01559,
+    "p99": 0.01559
+  },
+  "e2e_s": {
+    "p50": 10.695,
+    "p95": 10.695,
+    "p99": 10.695
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-16k-out512",
+  "start": "2026-10-06T15:44:36Z",
+  "end": "2026-10-06T15:44:46Z",
+  "duration_s": 10.7,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-16k-out512.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-16k-out1024 ===
+[pool] 39 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-16k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0556,
+  "out_tokens_per_s": 15.3,
+  "ttft_s": {
+    "p50": 9.1363,
+    "p95": 9.1363,
+    "p99": 9.1363
+  },
+  "tpot_s": {
+    "p50": 0.03217,
+    "p95": 0.03217,
+    "p99": 0.03217
+  },
+  "e2e_s": {
+    "p50": 17.982,
+    "p95": 17.982,
+    "p99": 17.982
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-16k-out1024",
+  "start": "2026-10-06T15:44:46Z",
+  "end": "2026-10-06T15:45:04Z",
+  "duration_s": 18.0,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-16k-out1024.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-32k-out128 ===
+[pool] 9 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-32k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.1272,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 7.862,
+    "p95": 7.862,
+    "p99": 7.862
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-32k-out128",
+  "start": "2026-10-06T15:45:04Z",
+  "end": "2026-10-06T15:45:12Z",
+  "duration_s": 7.9,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 128,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-32k-out128.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-32k-out512 ===
+[pool] 9 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-32k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.1053,
+  "out_tokens_per_s": 0.0,
+  "ttft_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "tpot_s": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "e2e_s": {
+    "p50": 9.497,
+    "p95": 9.497,
+    "p99": 9.497
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-32k-out512",
+  "start": "2026-10-06T15:45:12Z",
+  "end": "2026-10-06T15:45:22Z",
+  "duration_s": 9.5,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 512,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-32k-out512.csv"
+}
+=== p1-qwen3.8-27b-262k-lmsys-32k-out1024 ===
+[pool] 9 prompts from /mnt/data/code/sir-llm-platform/bench/data/lmsys-32k.jsonl
+{
+  "requests": 1,
+  "ok": 1,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.0486,
+  "out_tokens_per_s": 17.8,
+  "ttft_s": {
+    "p50": 14.74,
+    "p95": 14.74,
+    "p99": 14.74
+  },
+  "tpot_s": {
+    "p50": 0.01599,
+    "p95": 0.01599,
+    "p99": 0.01599
+  },
+  "e2e_s": {
+    "p50": 20.559,
+    "p95": 20.559,
+    "p99": 20.559
+  },
+  "top_errors": [],
+  "tag": "p1-qwen3.8-27b-262k-lmsys-32k-out1024",
+  "start": "2026-10-06T15:45:22Z",
+  "end": "2026-10-06T15:45:43Z",
+  "duration_s": 20.6,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b-262k",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 1024,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/p1-qwen3.8-27b-262k-lmsys-32k-out1024.csv"
+}
+phase 1 done

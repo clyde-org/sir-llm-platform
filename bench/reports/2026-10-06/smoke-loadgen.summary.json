@@ -1,0 +1,42 @@
+{
+  "requests": 3,
+  "ok": 3,
+  "errors": 0,
+  "error_rate": 0.0,
+  "throughput_rps": 0.7044,
+  "out_tokens_per_s": 2.8,
+  "ttft_s": {
+    "p50": 1.3261,
+    "p95": 1.3802,
+    "p99": 1.385
+  },
+  "tpot_s": {
+    "p50": 0.01993,
+    "p95": 0.02195,
+    "p99": 0.02213
+  },
+  "e2e_s": {
+    "p50": 1.42,
+    "p95": 1.43,
+    "p99": 1.431
+  },
+  "top_errors": [],
+  "tag": "smoke-loadgen",
+  "start": "2026-10-06T15:13:49Z",
+  "end": "2026-10-06T15:13:53Z",
+  "duration_s": 4.3,
+  "config": {
+    "mode": "closed",
+    "model": "qwen3.8-27b",
+    "path": "/v1/chat/completions",
+    "input_tokens": 1024,
+    "output_tokens": 32,
+    "shared_prefix_tokens": 0,
+    "rate": null,
+    "conc": 1,
+    "stream": true,
+    "anthropic": false
+  },
+  "aborted": "",
+  "csv": "/mnt/data/code/sir-llm-platform/bench/reports/2026-10-06/smoke-loadgen.csv"
+}
