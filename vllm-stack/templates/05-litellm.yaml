@@ -24,7 +24,9 @@ spec:
       annotations:
         # LiteLLM reads its config only at startup, so config-relevant
         # value changes must bump the pod template to trigger a rollout.
-        checksum/litellm-config: {{ tuple .Values.litellm .Values.model .Values.phase2 .Values.claudeService | toYaml | sha256sum }}
+        # (postgres values in too: DATABASE_URL changes must roll this pod;
+        # redis values: the coordination_redis URL in the config.)
+        checksum/litellm-config: {{ tuple .Values.litellm .Values.model .Values.phase2 .Values.claudeService .Values.postgres .Values.redis | toYaml | sha256sum }}
     spec:
 {{ include "vllm-stack.nodePin" . | indent 6 }}
 {{ include "vllm-stack.tolerations" . | indent 6 }}
@@ -71,6 +73,16 @@ spec:
               cpu: "2000m"
               memory: "2Gi"
           env:
+            # Admin UI (http://<node>:30400/ui, login admin / master key) and
+            # persistent request/spend logs. The proxy runs its own Prisma
+            # migrations at startup; see templates/10-postgres.yaml.
+            {{- if .Values.postgres.enabled }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-db-creds
+                  key: DATABASE_URL
+            {{- end }}
             # Suppress telemetry back to litellm.ai
             - name: LITELLM_TELEMETRY
               value: "False"

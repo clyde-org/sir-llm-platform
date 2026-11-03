@@ -720,6 +720,14 @@ data:
           auth: true
 {{- end }}
       allow_requests_on_db_unavailable: false
+      # Cross-pod coordination (rate limits, budgets, spend tracking, worker
+      # census, cache invalidation) on the shared cluster Redis — the same
+      # instance the router uses for queue state, but logical DB 1 so the two
+      # key spaces never mix (router is on the default DB 0). Without this the
+      # UI shows the "No Redis configured" banner and limits are enforced once
+      # per worker, so spend can overshoot.
+      coordination_redis:
+        url: "redis://redis:{{ .Values.redis.port }}/1"
 
     # Prometheus metrics: WITHOUT the prometheus callbacks LiteLLM does not
     # register the /metrics route at all (it 404s behind the auth middleware,

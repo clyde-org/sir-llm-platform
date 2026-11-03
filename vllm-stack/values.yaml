@@ -47,6 +47,7 @@ images:
   vllm: quay.io/ascend/vllm-ascend:v0.23.0rc1
   redis: docker.io/library/redis:7-alpine
   litellm: ghcr.io/berriai/litellm:main-stable
+  postgres: docker.io/library/postgres:16-alpine
   # The vllm-ascend image ships the whole Mooncake stack (mooncake_master,
   # HTTP metadata server, NPU transfer engine, MooncakeStoreConnector), so the
   # master reuses it — already pulled on every node.
@@ -132,6 +133,42 @@ litellm:
   # Kept for compatibility; new clients should use /v1/messages + model name.
   anthropicMessagesTarget262k: "http://vllm-qwen3-8b-p2:8200/v1/messages"
   detailedDebug: false
+
+# Postgres for LiteLLM (admin UI + persistent request/spend logs + virtual keys).
+#
+# The LiteLLM admin UI (http://<node>:30400/ui, login admin / master key)
+# REQUIRES a database: login upserts the admin user row and mints a UI
+# session key, both of which hit Postgres ("Not connected to DB!" without it).
+# The proxy runs its own Prisma migrations at startup (prisma db push) — no
+# manual migration step. Pinned to the control-plane node like the rest of
+# the control plane.
+#
+# NOTE: with DATABASE_URL set, the existing general_settings
+# `allow_requests_on_db_unavailable: false` means the proxy REFUSES LLM
+# requests while Postgres is down. Keep the PVC sized for the request logs:
+# every proxied request stores its input/output, so 10Gi is a starting point
+# for a busy lab cluster — watch `df` on the control-plane node or raise
+# storage.size before it fills.
+postgres:
+  enabled: true
+  serviceName: postgres
+  port: 5432
+  user: "litellm"
+  password: "litellm-local"
+  database: "litellm"
+  storage:
+    size: 10Gi
+    # Static local PV path on the control-plane node (no StorageClass in
+    # this cluster; see templates/10-postgres.yaml). ONE-TIME:
+    # mkdir -p <path> on that node before the pod first mounts.
+    path: /data/litellm-db
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
 
 # Second Service exposing the vLLM pods for the Claude Code client
 # (Anthropic /v1/messages). Unauthenticated; see claude-code/README.md.
