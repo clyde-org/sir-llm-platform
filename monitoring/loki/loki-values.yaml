@@ -1,0 +1,123 @@
+# Loki single-binary mode — helm values for release `loki` in namespace `logging`
+#
+#   helm install loki ./charts/loki-7.3.0.tgz -n logging -f loki-values.yaml
+#   (or: helm install loki grafana/loki-7.3.0 … after `helm repo add grafana`)
+#
+# Design:
+# - SingleBinary: one pod runs distributor/ingester/querier/compactor/ruler.
+#   Right-sized for ~128 pods / ~1-3 GiB logs per day.
+# - Filesystem storage on a static local PV (this cluster has no StorageClasses;
+#   see static-pv.yaml — same pattern as postgres-pv).
+# - TSDB index (Loki 3.x default), 7-day retention.
+# - No object store, no memcached caches, no nginx gateway — single binary
+#   serves the HTTP API directly on :3100.
+
+deploymentMode: SingleBinary
+
+singleBinary:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 2
+      memory: 2Gi
+    limits:
+      cpu: 4
+      memory: 4Gi
+  extraEnv:
+    # Keep the Go runtime a bit below the memory limit
+    - name: GOMEMLIMIT
+      value: 3584MiB
+  persistence:
+    enabled: true
+    # "-" renders storageClassName: "" -> binds the unclassified static PV
+    # created by static-pv.yaml (PVC is created by the StatefulSet: storage-loki-0)
+    storageClass: "-"
+    size: 100Gi
+
+loki:
+  image:
+    # multi-arch incl. arm64 (this cluster is all-aarch64)
+    tag: 3.6.12
+  # Single-tenant lab — no auth, no X-Scope-OrgID needed
+  auth_enabled: false
+  commonConfig:
+    path_prefix: /var/loki
+    # single node — replication must be 1
+    replication_factor: 1
+  storage:
+    # must NOT be s3/gcs/azure/... or the chart demands object-store buckets;
+    # "filesystem" routes to the plain-disk branch below
+    type: filesystem
+    filesystem:
+      chunks_directory: /var/loki/chunks
+      rules_directory: /var/loki/rules
+  schemaConfig:
+    configs:
+      # start well in the past: entries older than the 7d retention window are
+      # rejected at push time (400, dropped instantly), but entries need a
+      # matching schema entry or Loki returns 500 and Promtail retries/drops them
+      - from: "2026-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  compactor:
+    compaction_interval: 10m
+    retention_enabled: true
+    retention_delete_delay: 4h
+    # required in Loki 3.x when retention is enabled
+    delete_request_store: filesystem
+  limits_config:
+    # 7 days for all streams
+    retention_period: 168h
+
+# Chart validation requires the other deployment modes' replicas to be zeroed
+# out explicitly when running SingleBinary (see chart's validate.yaml).
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+
+# Single binary does not need the separate memcached caches the chart deploys
+# by default (they would be extra statefulsets for no benefit at this scale).
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+
+# No nginx front — promtail/Grafana talk to the singleBinary service directly
+gateway:
+  enabled: false
+
+minio:
+  enabled: false
+
+# No rollout canary (extra DaemonSet) needed
+lokiCanary:
+  enabled: false
+
+# The chart's helm-test pod requires the canary; neither is wanted here
+test:
+  enabled: false
+
+monitoring:
+  selfMonitoring:
+    enabled: false

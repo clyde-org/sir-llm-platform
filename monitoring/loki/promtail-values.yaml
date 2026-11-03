@@ -1,0 +1,23 @@
+# Promtail — helm values for release `promtail` in namespace `logging`
+#
+#   helm install promtail ./charts/promtail-6.17.1.tgz -n logging -f promtail-values.yaml
+#
+# DaemonSet on every Ready node. Default scrape config (chart-provided):
+# kubernetes SD over pods, tails /var/log/pods/*uid*/container/*.log with the
+# CRI JSON parser, and relabels namespace / pod / container / node_name / job
+# onto every stream. NotReady nodes (node3/node4) simply get no pod.
+#
+# The chart's default client URL points at a `loki-gateway` service that does
+# not exist in our single-binary + no-gateway setup, so it is overridden here.
+
+config:
+  clients:
+    - url: http://loki.logging.svc.cluster.local:3100/loki/api/v1/push
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1
+    memory: 512Mi

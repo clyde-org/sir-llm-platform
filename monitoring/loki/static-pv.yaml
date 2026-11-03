@@ -1,0 +1,36 @@
+# Static local PV for Loki storage.
+#
+# This cluster has NO StorageClasses — all PVCs use pre-provisioned local PVs
+# (same pattern as postgres-pv / open-webui-data). The Loki StatefulSet creates
+# the PVC itself (name: storage-loki-0, storageClassName "", 100Gi, RWO); it
+# binds to this PV.
+#
+# ONE-TIME prerequisite (local PVs do not create the path):
+#   the directory /data/loki must exist on devserver-bms-2eff03de-0.novalocal.
+#   Done at install time with a one-shot hostPath pod — see README.md.
+#
+# Chosen node: 2eff03de-0 — /data is NVMe (nvme0n1, 7.5 TiB free) and it already
+# hosts the other local PVs. Deliberately NOT the control-plane node.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: loki-data
+  labels:
+    app.kubernetes.io/name: loki
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
+  local:
+    path: /data/loki
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - devserver-bms-2eff03de-0.novalocal

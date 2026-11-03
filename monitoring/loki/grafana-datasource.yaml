@@ -1,0 +1,29 @@
+# Provisions a "Loki" datasource into the existing Grafana (monitoring ns).
+#
+# The Grafana pod already runs the kiwigrid datasources sidecar, which watches
+# for ConfigMaps/Secrets labeled grafana_datasource="1" and syncs them to
+# /etc/grafana/provisioning/datasources + reloads via the admin API. Same
+# label-driven pattern the dashboards use (grafana_dashboard="1") — no helm
+# upgrade of the prometheus release needed.
+#
+#   kubectl apply -f grafana-datasource.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-datasource
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  loki.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        uid: loki
+        type: loki
+        access: proxy
+        url: http://loki.logging.svc.cluster.local:3100
+        isDefault: false
+        editable: true
+        jsonData:
+          maxLines: 1000

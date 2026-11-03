@@ -1,0 +1,31 @@
+# NodePort exposure of the Loki query/push API (the chart's service is ClusterIP
+# and has no nodePort knob).
+#
+# 32100 was verified free (existing NodePorts span 30171-31082 + 31901).
+#
+#   curl http://<NODE_IP>:32100/ready                     -> "ready"
+#   curl http://<NODE_IP>:32100/loki/api/v1/labels        -> collected labels
+#   # ad-hoc query:
+#   curl -G http://<NODE_IP>:32100/loki/api/v1/query \
+#     --data-urlencode 'query={namespace="sir-llm-platform"}'
+#
+# NOTE: cluster-wide logs contain sensitive data — lab network only.
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-nodeport
+  namespace: logging
+  labels:
+    app.kubernetes.io/name: loki
+spec:
+  type: NodePort
+  selector:
+    # must match the singleBinary pod labels (release name "loki")
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/instance: loki
+    app.kubernetes.io/component: single-binary
+  ports:
+    - name: http
+      port: 3100
+      targetPort: http-metrics
+      nodePort: 32100
