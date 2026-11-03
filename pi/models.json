@@ -34,17 +34,21 @@
           "maxTokens": 8192
         },
         {
-          "id": "dsv4",
-          "name": "DeepSeek V4 Flash (W8A8, 133k context)",
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash (W8A8, node3, 133k ctx)",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 133120,
           "maxTokens": 16384,
           "compat": {
             "supportsReasoningEffort": false,
             "thinkingFormat": "chat-template",
             "chatTemplateKwargs": {
-              "thinking": { "$var": "thinking.enabled" }
+              "thinking": {
+                "$var": "thinking.enabled"
+              }
             }
           }
         }

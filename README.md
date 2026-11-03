@@ -143,17 +143,21 @@ pi -p "Reply with PONG"    # verify
           "maxTokens": 8192
         },
         {
-          "id": "dsv4",
-          "name": "DeepSeek V4 Flash (W8A8, 133k context)",
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash (W8A8, node3, 133k ctx)",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 133120,
           "maxTokens": 16384,
           "compat": {
             "supportsReasoningEffort": false,
             "thinkingFormat": "chat-template",
             "chatTemplateKwargs": {
-              "thinking": { "$var": "thinking.enabled" }
+              "thinking": {
+                "$var": "thinking.enabled"
+              }
             }
           }
         }
@@ -182,9 +186,9 @@ pi -p "Reply with PONG"    # verify
 ```
 
 - don't raise `maxTokens: 8192` on the qwen models — pi's input wall is
-  `contextWindow − maxTokens` (`dsv4` ships at 16384: its 133k window
-  leaves an ~117k input wall)
-- `dsv4` uses **per-model** `compat` (thinking via
+  `contextWindow − maxTokens` (`deepseek-v4-flash` ships at 16384: its
+  133k window leaves an ~117k input wall)
+- `deepseek-v4-flash` uses **per-model** `compat` (thinking via
   `chat_template_kwargs.thinking`): vLLM's DeepSeek template ignores the
   top-level `thinking` param and LiteLLM rejects it, so the provider-level
   `qwen-chat-template` format must stay untouched
