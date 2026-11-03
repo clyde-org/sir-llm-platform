@@ -64,6 +64,12 @@ spec:
             - "0.90"
             - --block-size
             - "128"
+            # The 1017 checkpoint is native block-FP8 (32x32, ue8m0) with
+            # FP4 routed experts. 'ascend' (ModelSlim) does not match this
+            # checkpoint; 'fp8' (vLLM native) mismatches the model.py scale
+            # naming (wkv -> weight_scale_inv). deepseek_v4_fp8 (ds_linear)
+            # matches the names; its odd-k scale-packing bug is fixed by the
+            # dsv41-patch sitecustomize (see dsv41/sitecustomize.py).
             - --quantization
             - deepseek_v4_fp8
             - --engram-config
@@ -114,11 +120,15 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 100
+          # Boot takes 25-50 min (475 GB weights over 16 ranks + engram
+          # tables + lazy shard loads + KV profiling + graph capture).
+          # initialDelay must cover the full boot or the probe SIGTERMs the
+          # container mid-boot and the headless worker dies with it.
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 900
+            initialDelaySeconds: 3600
             periodSeconds: 60
             timeoutSeconds: 10
             failureThreshold: 10

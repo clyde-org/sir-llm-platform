@@ -67,6 +67,8 @@ spec:
             - "0.90"
             - --block-size
             - "128"
+            # Must match the head (see 02-dsv41-head.yaml). The odd-k scale
+            # packing bug in deepseek_v4_fp8 is fixed by dsv41-patch.
             - --quantization
             - deepseek_v4_fp8
             - --engram-config
