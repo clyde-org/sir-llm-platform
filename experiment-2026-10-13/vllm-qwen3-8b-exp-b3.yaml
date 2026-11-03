@@ -1,0 +1,367 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-qwen3-8b-exp-b3
+  namespace: sir-llm-platform
+spec:
+  progressDeadlineSeconds: 3600
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: vllm-qwen3-8b-exp-b3
+      model: qwen3.8-27b
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: vllm-qwen3-8b-exp-b3
+        component: vllm
+        model: qwen3.8-27b
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: avoid
+                operator: NotIn
+                values:
+                - vllm
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: model
+                  operator: Exists
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+      - args:
+        - "set -eo pipefail\n\nexport CMAKE_PREFIX_PATH=\"${CMAKE_PREFIX_PATH:-}\"\
+          \necho \"--- ASCEND_TOOLKIT_HOME before sourcing: [$ASCEND_TOOLKIT_HOME]\"\
+          \nsource /usr/local/Ascend/ascend-toolkit/set_env.sh\nexport LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH:/usr/local/Ascend/ascend-toolkit/latest/aarch64-linux/devlib:/usr/local/Ascend/ascend-toolkit/latest/aarch64-linux/lib64\n\
+          \nexport PYTHONPATH=\"/etc/fingerprint-mw:${PYTHONPATH:-}\"\n\npython -m\
+          \ vllm.entrypoints.openai.api_server \\\n  --model /model \\\n  --tokenizer\
+          \ /model \\\n  --port \"8200\" \\\n  --served-model-name \"qwen3.8-27b-262k\"\
+          \ \"qwen3.8-27b-131k\" \\\n  --tensor-parallel-size \"4\" \\\n  --middleware\
+          \ _fp_mw.HostnameFingerprint \\\n  --dtype auto \\\n  --kv-cache-dtype auto\
+          \ \\\n  --max-num-seqs \"8\" \\\n  --max-num-batched-tokens \"8192\" \\\n\
+          \  --enable-prefix-caching \\\n  --enable-prompt-tokens-details \\\n  --enable-force-include-usage\
+          \ \\\n  --gpu-memory-utilization \"0.9\" \\\n  --compilation-config '{\"\
+          cudagraph_mode\": \"FULL_DECODE_ONLY\"}' \\\n  --trust-remote-code \\\n\
+          \  --enable-auto-tool-choice \\\n  --tool-call-parser qwen3_coder \\\n \
+          \ --reasoning-parser qwen3 \\\n  --speculative-config '{\"method\": \"mtp\"\
+          , \"num_speculative_tokens\": 3, \"enforce_eager\": true}' \\\n  --max-model-len\
+          \ \"262144\" \\\n  --host 0.0.0.0 \\\n  --kv-events-config '{\"enable_kv_cache_events\"\
+          : true, \"publisher\": \"zmq\", \"endpoint\": \"tcp://*:5557\", \"topic\"\
+          : \"kv@'\"${POD_NAME}\"'@qwen3.8-27b\"}' \\\n  &\nVLLM_PID=$!\necho \"[vllm-wrapper]\
+          \ vLLM PID=$VLLM_PID model=qwen3.8-27b (phase2 pool)\"\n\nVLLM_PID=\"$VLLM_PID\"\
+          \ POD_NAME=\"$POD_NAME\" python - <<'PY' &\nimport os, time\nfrom http.server\
+          \ import BaseHTTPRequestHandler, HTTPServer\nPID = int(os.environ[\"VLLM_PID\"\
+          ])\nPOD = os.environ.get(\"POD_NAME\", \"unknown\")\nPORT = 9101\ndef threads(pid):\n\
+          \    try: return len(os.listdir(f\"/proc/{pid}/task\"))\n    except: return\
+          \ None\nfor _ in range(120):\n    if os.path.exists(f\"/proc/{PID}\"): break\n\
+          \    time.sleep(0.25)\nclass H(BaseHTTPRequestHandler):\n    def do_GET(self):\n\
+          \        if self.path != \"/metrics\":\n            self.send_response(404);\
+          \ self.end_headers(); return\n        n = threads(PID)\n        body = 'vllm_threads{pod=\"\
+          %s\"} %d\\n' % (POD, n) if n else \"# pid not visible\\n\"\n        self.send_response(200)\n\
+          \        self.send_header(\"Content-Type\", \"text/plain; version=0.0.4\"\
+          )\n        self.end_headers()\n        self.wfile.write(body.encode())\n\
+          \    def log_message(self, *a): pass\nHTTPServer((\"0.0.0.0\", PORT), H).serve_forever()\n\
+          PY\n\nwait \"$VLLM_PID\"\n"
+        command:
+        - /bin/bash
+        - -c
+        env:
+        - name: HF_HUB_OFFLINE
+          value: '1'
+        - name: TRANSFORMERS_OFFLINE
+          value: '1'
+        - name: HF_HUB_DISABLE_TELEMETRY
+          value: '1'
+        - name: PYTHONHASHSEED
+          value: '0'
+        - name: TOKENIZERS_PARALLELISM
+          value: 'false'
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: ASCEND_RT_VISIBLE_DEVICES
+          value: 0,1,2,3
+        - name: HCCL_OP_EXPANSION_MODE
+          value: AIV
+        - name: VLLM_USE_V1
+          value: '1'
+        - name: PYTORCH_NPU_ALLOC_CONF
+          value: expandable_segments:True
+        - name: ASCEND_BUFFER_POOL
+          value: '4:8'
+        image: quay.io/ascend/vllm-ascend:v0.23.0rc1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 720
+          httpGet:
+            path: /health
+            port: 8200
+            scheme: HTTP
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: vllm
+        ports:
+        - containerPort: 8200
+          name: http
+          protocol: TCP
+        - containerPort: 5557
+          name: kvpub
+          protocol: TCP
+        - containerPort: 9101
+          name: vllmthr
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 12
+          httpGet:
+            path: /health
+            port: 8200
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          limits:
+            ephemeral-storage: 4Gi
+            huawei.com/Ascend910: '4'
+          requests:
+            ephemeral-storage: 2Gi
+            huawei.com/Ascend910: '4'
+        startupProbe:
+          failureThreshold: 720
+          httpGet:
+            path: /health
+            port: 8200
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 5
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/fingerprint-mw
+          name: fingerprint-mw
+          readOnly: true
+        - mountPath: /model
+          name: model
+          readOnly: true
+          subPath: Qwen3.8-27B
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /usr/local/dcmi
+          name: dcmi-volume
+        - mountPath: /usr/local/bin/npu-smi
+          name: npu-smi-volume
+        - mountPath: /usr/local/Ascend/driver/lib64/
+          name: ascend-driver-lib64-volume
+        - mountPath: /usr/local/Ascend/driver/version.info
+          name: version-info-volume
+        - mountPath: /etc/ascend_install.info
+          name: ascend-install-info-volume
+        - mountPath: /root/.cache
+          name: cache-volume
+        - mountPath: /dev/hisi_hdc
+          name: hisi-hdc-volume
+        - mountPath: /dev/devmm_svm
+          name: devmm-svm-volume
+      - env:
+        - name: ROUTER_URL
+          value: http://router-service:8080
+        - name: VLLM_URL
+          value: http://127.0.0.1:8200
+        - name: MODEL_NAME
+          value: qwen3.8-27b-262k
+        - name: SIDECAR_PORT
+          value: '9000'
+        - name: BATCH_SIZE
+          value: '8'
+        - name: PREFETCH
+          value: '0'
+        - name: SIDECAR_MODE
+          value: pull
+        - name: PULL_INTERVAL_S
+          value: '0.05'
+        - name: ROUTER_PULL_TIMEOUT_S
+          value: '1000.0'
+        - name: VLLM_TIMEOUT_S
+          value: '7200.0'
+        - name: ROUTER_RESULT_TIMEOUT_S
+          value: '1000.0'
+        - name: RESULT_TRANSPORT_MODE
+          value: submit_ack
+        - name: RESULT_SUBMIT_PATH
+          value: /result_submit
+        - name: VLLM_HOST
+          value: 127.0.0.1
+        - name: VLLM_SUB_PORT
+          value: '5557'
+        - name: DP_SIZE
+          value: '1'
+        - name: DP_SIZE_LOCAL
+          value: '1'
+        - name: REDIS_HOST
+          value: redis
+        - name: REDIS_PORT
+          value: '6379'
+        - name: CONTAINER_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: MODEL_NAME_REDIS
+          value: qwen3.8-27b-262k
+        - name: TRACE_ENABLED
+          value: 'true'
+        - name: LOG_LEVEL
+          value: info
+        - name: FORCE_IGNORE_EOS
+          value: 'false'
+        - name: STREAMING_MODE
+          value: 'true'
+        image: ghcr.io/clyde-org/llm-la-icbc/kv-sidecar:7f52ac0a
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /health
+            port: 9000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          successThreshold: 1
+          timeoutSeconds: 3
+        name: kv-sidecar
+        ports:
+        - containerPort: 9000
+          name: sidecar-http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 9000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: '1'
+            memory: 1Gi
+          requests:
+            cpu: 200m
+            memory: 512Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        llm-pool: qwen-38b-exp-b3
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: vllm-fingerprint-mw
+        name: fingerprint-mw
+      - hostPath:
+          path: /data/models
+          type: Directory
+        name: model
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 64Gi
+        name: dshm
+      - hostPath:
+          path: /usr/local/dcmi
+          type: Directory
+        name: dcmi-volume
+      - hostPath:
+          path: /usr/local/bin/npu-smi
+          type: File
+        name: npu-smi-volume
+      - hostPath:
+          path: /usr/local/Ascend/driver/lib64/
+          type: Directory
+        name: ascend-driver-lib64-volume
+      - hostPath:
+          path: /usr/local/Ascend/driver/version.info
+          type: File
+        name: version-info-volume
+      - hostPath:
+          path: /etc/ascend_install.info
+          type: File
+        name: ascend-install-info-volume
+      - hostPath:
+          path: /root/.cache
+          type: DirectoryOrCreate
+        name: cache-volume
+      - hostPath:
+          path: /dev/hisi_hdc
+          type: CharDevice
+        name: hisi-hdc-volume
+      - hostPath:
+          path: /dev/devmm_svm
+          type: CharDevice
+        name: devmm-svm-volume
+status:
+  availableReplicas: 4
+  conditions:
+  - lastTransitionTime: '2026-09-23T12:16:27Z'
+    lastUpdateTime: '2026-09-25T15:38:00Z'
+    message: ReplicaSet "vllm-qwen3-8b-p2-5f94c9f66f" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: 'True'
+    type: Progressing
+  - lastTransitionTime: '2026-10-04T05:58:13Z'
+    lastUpdateTime: '2026-10-04T05:58:13Z'
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: 'True'
+    type: Available
+  observedGeneration: 11
+  readyReplicas: 4
+  replicas: 4
+  updatedReplicas: 4
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-qwen3-8b-exp-b3
+  namespace: sir-llm-platform
+spec:
+  selector:
+    app: vllm-qwen3-8b-exp-b3
+  ports:
+  - name: http
+    port: 8200
+    targetPort: 8200
+    protocol: TCP
