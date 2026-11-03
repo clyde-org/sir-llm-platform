@@ -1,0 +1,42 @@
+# DeepSeek-V4.1-Flash-1017 on node3 + node4 (2x Atlas 800 A2-class, 8x 910B3 each)
+#
+# Topology: global DP2 / TP8 / EP16 (two-node adaptation of the official
+# four-node A2 "DP4/TP8/EP32" retained config from the vllm-ascend v0.30.0rc2
+# DeepSeek-V4.1-Flash tutorial; 384 routed experts / 16 ranks = 24 per rank,
+# 24 engram heads / 8 devices = 3 per device — both divide evenly).
+#
+# Image: quay.io/ascend/vllm-ascend:deepseek-v4.1-flash
+#   - the dedicated A2 image for this model (validated W8A8/FP4 path,
+#     DSpark, deepseek_v41 tokenizer/parsers)
+#   - nodes have NO registry egress: the image is imported by hand
+#     (crictl rimport), so imagePullPolicy=Never.
+#
+# Weights: /data/models/DeepSeek-V4.1-Flash-1017 (hostPath, 510 GB, staged on
+#   BOTH nodes from the Huawei internal HF mirror).
+#
+# ORDER MATTERS:
+#   1. kubectl apply -f 01-dsv41-service.yaml
+#   2. kubectl apply -f 02-dsv41-head.yaml      (node3; wait for DP port 13399)
+#   3. kubectl apply -f 03-dsv41-worker.yaml    (node4; joins the DP group)
+# Rollback: kubectl delete -f (worker first, then head, then service).
+#
+# Gateway: registered in the litellm-config ConfigMap as model
+# "deepseek-v4.1-flash" with api_base http://dsv41:8000/v1 (direct upstream,
+# intentionally bypassing the kv-router — no kv-sidecar/KV events for this
+# pool; vLLM's own max-model-len 400 covers context overflow).
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: dsv41
+  namespace: sir-llm-platform
+  labels:
+    app: dsv41
+spec:
+  selector:
+    app: dsv41
+    role: head
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

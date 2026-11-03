@@ -1,0 +1,191 @@
+# DeepSeek-V4.1-Flash WORKER (node4, DP rank 1, headless)
+# Same image/env as the head; joins the DP group at node3:13399.
+# APPLY ONLY AFTER the head's DP-RPC port 13399 is listening.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dsv41-worker
+  namespace: sir-llm-platform
+  labels:
+    app: dsv41
+    role: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dsv41
+      role: worker
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: dsv41
+        role: worker
+        model: deepseek-v4.1-flash
+        owner: sheriffo
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/hostname: node4
+      containers:
+        - name: vllm
+          image: quay.io/ascend/vllm-ascend:v0.30.0rc2-openeuler
+          imagePullPolicy: Never
+          args:
+            - vllm
+            - serve
+            - /model
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+            - --headless
+            - --data-parallel-start-rank
+            - "1"
+            - --data-parallel-address
+            - 10.50.156.65
+            - --data-parallel-rpc-port
+            - "13399"
+            - --data-parallel-size
+            - "2"
+            - --data-parallel-size-local
+            - "1"
+            - --tensor-parallel-size
+            - "8"
+            - --enable-expert-parallel
+            - --served-model-name
+            - deepseek-v4.1-flash
+            - --max-model-len
+            - "1048576"
+            - --max-num-batched-tokens
+            - "4096"
+            - --max-num-seqs
+            - "32"
+            - --gpu-memory-utilization
+            - "0.90"
+            - --block-size
+            - "128"
+            - --quantization
+            - deepseek_v4_fp8
+            - --engram-config
+            - '{"cpu_offload":true,"dp_shared_memory":true}'
+            - --tokenizer-mode
+            - deepseek_v41
+            - --reasoning-parser
+            - deepseek_v41
+            - --tool-call-parser
+            - deepseek_v41
+            - --enable-auto-tool-choice
+            - --trust-remote-code
+            - --model-loader-extra-config
+            - '{"enable_multithread_load":true,"num_threads":128}'
+            - --safetensors-load-strategy
+            - lazy
+            - --additional-config
+            - '{"enable_cpu_binding":true,"ascend_compilation_config":{"enable_npugraph_ex":false,"enable_static_kernel":false}}'
+            - --speculative-config
+            - '{"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}'
+            - --compilation-config
+            - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+          env:
+            - name: VLLM_ENGINE_READY_TIMEOUT_S
+              value: "3600"
+            - name: HCCL_IF_IP
+              value: "10.50.156.106"
+            - name: GLOO_SOCKET_IFNAME
+              value: "enp189s0f0"
+            - name: TP_SOCKET_IFNAME
+              value: "enp189s0f0"
+            - name: HCCL_SOCKET_IFNAME
+              value: "enp189s0f0"
+            - name: ASCEND_RT_VISIBLE_DEVICES
+              value: "0,1,2,3,4,5,6,7"
+            - name: PYTHONPATH
+              value: /dsv41-patch
+          ports:
+            - name: dp-rpc
+              containerPort: 13399
+          resources:
+            requests:
+              cpu: "32"
+              memory: "100Gi"
+            limits:
+              huawei.com/Ascend910: "8"
+          volumeMounts:
+            - name: model
+              mountPath: /model
+              readOnly: true
+            - name: dsv41-patch
+              mountPath: /dsv41-patch
+              readOnly: true
+            - name: dshm
+              mountPath: /dev/shm
+            - name: dcmi
+              mountPath: /usr/local/dcmi
+            - name: npu-smi
+              mountPath: /usr/local/bin/npu-smi
+            - name: ascend-driver-lib64
+              mountPath: /usr/local/Ascend/driver/lib64/
+            - name: driver-version-info
+              mountPath: /usr/local/Ascend/driver/version.info
+            - name: ascend-install-info
+              mountPath: /etc/ascend_install.info
+            - name: cache
+              mountPath: /root/.cache
+            - name: hisi-hdc
+              mountPath: /dev/hisi_hdc
+            - name: devmm-svm
+              mountPath: /dev/devmm_svm
+            - name: hccn-conf
+              mountPath: /etc/hccn.conf
+              readOnly: true
+      volumes:
+        - name: dsv41-patch
+          configMap:
+            name: dsv41-patch
+        - name: model
+          hostPath:
+            path: /data/models/DeepSeek-V4.1-Flash-1017
+            type: Directory
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 512Gi
+        - name: dcmi
+          hostPath:
+            path: /usr/local/dcmi
+            type: Directory
+        - name: npu-smi
+          hostPath:
+            path: /usr/local/bin/npu-smi
+            type: File
+        - name: ascend-driver-lib64
+          hostPath:
+            path: /usr/local/Ascend/driver/lib64/
+            type: Directory
+        - name: driver-version-info
+          hostPath:
+            path: /usr/local/Ascend/driver/version.info
+            type: File
+        - name: ascend-install-info
+          hostPath:
+            path: /etc/ascend_install.info
+            type: File
+        - name: cache
+          hostPath:
+            path: /root/.cache
+            type: DirectoryOrCreate
+        - name: hisi-hdc
+          hostPath:
+            path: /dev/hisi_hdc
+            type: CharDevice
+        - name: devmm-svm
+          hostPath:
+            path: /dev/devmm_svm
+            type: CharDevice
+        - name: hccn-conf
+          hostPath:
+            path: /etc/hccn.conf
+            type: File

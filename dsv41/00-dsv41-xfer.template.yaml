@@ -1,0 +1,45 @@
+# One-shot: fetch the image tar from the office machine + import into the
+# node's containerd k8s.io namespace. Own pod cgroup (the npu-node-agent
+# container is 1Gi-limited and gets OOMKilled by heavy chrooted work).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dsv41-xfer
+  namespace: sir-llm-platform
+spec:
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  nodeSelector:
+    kubernetes.io/hostname: NODE
+  restartPolicy: Never
+  containers:
+    - name: xfer
+      image: ghcr.io/fanbondi/npu-ops-agent:v1-b9991056
+      imagePullPolicy: IfNotPresent
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          # dd oflag=sync: keep page cache flat (a 10.5GB curl -o storm
+          # OOMs a small cgroup); /home has the space (root fs is 20-24G)
+          chroot /host sh -c 'rm -f /home/dsv41-oci.tar; curl -fsSL --retry 5 --retry-delay 5 http://7.191.128.118:8899/dsv41-oci.tar | dd of=/home/dsv41-oci.tar oflag=sync bs=1M 2>&1 | tail -1'
+          chroot /host sh -c 'stat -c%s /home/dsv41-oci.tar'
+          chroot /host sh -c 'ctr -n k8s.io images import /home/dsv41-oci.tar 2>&1 | grep -v DEPRECATION | tail -3'
+          chroot /host sh -c 'crictl images 2>/dev/null | grep deepseek-v4.1'
+          echo XFER-IMPORT-DONE
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 4Gi
+      volumeMounts:
+        - name: host-root
+          mountPath: /host
+  volumes:
+    - name: host-root
+      hostPath:
+        path: /
+        type: Directory
