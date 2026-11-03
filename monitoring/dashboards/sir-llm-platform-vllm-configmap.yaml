@@ -3069,6 +3069,498 @@ data:
             }
           ],
           "description": "Double-bit ECC = unrecoverable HBM fault. Should stay 0."
+        },
+        {
+          "type": "row",
+          "title": "Client requests (LiteLLM gateway)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 169
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "title": "Request rate by client (IP \u00d7 agent)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 170
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (client_ip, user_agent) (rate(litellm_requests_metric_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "{{client_ip}} \u00b7 {{user_agent}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Gateway requests/sec by source IP and harness user-agent. client_ip is what the litellm pod sees: in-cluster clients show pod IPs, external clients show real IPs (NodePort, no SNAT)."
+        },
+        {
+          "type": "stat",
+          "title": "Requests per client (24h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 170
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum by (client_ip) (increase(litellm_requests_metric_total{namespace=\"sir-llm-platform\"}[24h]))",
+              "legendFormat": "{{client_ip}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Total gateway requests in the last 24h per source IP."
+        },
+        {
+          "type": "timeseries",
+          "title": "Requests by model (gateway)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 178
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (requested_model) (rate(litellm_requests_metric_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "{{requested_model}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Gateway request rate per requested model name (131k vs 262k pool)."
+        },
+        {
+          "type": "timeseries",
+          "title": "Failed requests (by model)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 178
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (model) (rate(litellm_llm_api_failed_requests_metric_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "{{model}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Failed upstream generation rate per deployment model. This metric carries no client labels, so it cannot be sliced by client."
+        },
+        {
+          "type": "timeseries",
+          "title": "Request rate by user-agent",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 186
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (user_agent) (rate(litellm_requests_metric_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "{{user_agent}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Same traffic as the IP \u00d7 agent panel, grouped by harness only \u2014 identifies which client library/agent (open-webui, OpenAI/JS, curl, scripts) is driving load, even when one harness spans many pod IPs. With one shared master key, user_agent is often the only stable per-sender signal, so consider pinning a custom User-Agent per client/service."
+        },
+        {
+          "type": "timeseries",
+          "title": "Requests by client \u00d7 status code",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 186
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (client_ip, status_code) (rate(litellm_proxy_total_requests_metric_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "{{client_ip}} \u00b7 {{status_code}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Proxy-level request rate split by source IP and HTTP status. 200 = served; 401/429 = auth/budget rejections; 5xx = upstream or gateway failures. The client-level requests metric has no status_code, so this panel uses litellm_proxy_total_requests_metric."
+        },
+        {
+          "type": "timeseries",
+          "title": "Failed requests by client (IP \u00d7 agent)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 194
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (client_ip, user_agent) (rate(litellm_proxy_failed_requests_metric_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "{{client_ip}} \u00b7 {{user_agent}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Failed requests per source IP and user-agent (empty until the first failure \u2014 the metric is created lazily). Pinpoints which client is generating errors. Pair with the LiteLLM admin UI Requests page for per-request detail (model, tokens, error, requester IP)."
+        },
+        {
+          "type": "timeseries",
+          "title": "Token throughput by model (in vs out)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 194
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": false,
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none"
+                },
+                "axisPlacement": "auto",
+                "scaleDistribution": "linear"
+              },
+              "min": 0,
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (requested_model) (rate(litellm_input_tokens_metric_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "in \u00b7 {{requested_model}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            },
+            {
+              "expr": "sum by (requested_model) (rate(litellm_output_tokens_metric_total{namespace=\"sir-llm-platform\"}[5m]))",
+              "legendFormat": "out \u00b7 {{requested_model}}",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editor": false
+            }
+          ],
+          "description": "Input vs output tokens/sec per requested model. Token counters carry no client labels (upstream LiteLLM metric design), so per-client token usage must be read from the LiteLLM admin UI Requests page (per-request token counts + requester IP)."
         }
       ],
       "refresh": "10s",
@@ -3102,15 +3594,19 @@ data:
               "selected": true,
               "text": [
                 "devserver-0 (7.242.96.11)",
-                "devserver-1 (7.242.99.216)"
+                "devserver-1 (7.242.99.216)",
+                "node3 (10.50.156.65)",
+                "node4 (10.50.156.106)"
               ],
               "value": [
                 "7.242.96.11:8082",
-                "7.242.99.216:8082"
+                "7.242.99.216:8082",
+                "10.50.156.65:8082",
+                "10.50.156.106:8082"
               ]
             },
             "includeAll": true,
-            "allValue": "7[.]242[.](96[.]11|99[.]216):8082",
+            "allValue": "7[.]242[.](96[.]11|99[.]216):8082|10[.]50[.]156[.](65|106):8082",
             "label": "NPU node",
             "multi": true,
             "name": "npu_node",
@@ -3124,9 +3620,19 @@ data:
                 "selected": true,
                 "text": "devserver-1 (7.242.99.216)",
                 "value": "7.242.99.216:8082"
+              },
+              {
+                "selected": true,
+                "text": "node3 (10.50.156.65)",
+                "value": "10.50.156.65:8082"
+              },
+              {
+                "selected": true,
+                "text": "node4 (10.50.156.106)",
+                "value": "10.50.156.106:8082"
               }
             ],
-            "query": "devserver-0 (7.242.96.11):7.242.96.11:8082, devserver-1 (7.242.99.216):7.242.99.216:8082",
+            "query": "devserver-0 (7.242.96.11):7.242.96.11:8082, devserver-1 (7.242.99.216):7.242.99.216:8082, node3 (10.50.156.65):10.50.156.65:8082, node4 (10.50.156.106):10.50.156.106:8082",
             "type": "custom"
           }
         ]
@@ -3139,6 +3645,6 @@ data:
       "timezone": "browser",
       "title": "sir-llm-platform / vLLM + Router + NPU",
       "uid": "sir-llm-platform-vllm",
-      "version": 1,
+      "version": 2,
       "weekStart": ""
     }
