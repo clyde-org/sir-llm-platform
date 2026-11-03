@@ -12,6 +12,10 @@
 
 namespace: sir-llm-platform
 
+# Owner label stamped on vLLM pods (platform/owner). Used by the npu-ops
+# dashboard to attribute NPUs to a user. Override per environment as needed.
+owner: sheriffo
+
 # Global image registry for the clyde-org images (kv-router, kv-sidecar).
 global:
   imageRegistry: ghcr.io/clyde-org/llm-la-icbc

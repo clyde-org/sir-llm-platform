@@ -55,6 +55,7 @@ spec:
         app: {{ .Values.phase2.serviceName }}
         component: vllm
         model: {{ .Values.model.servedName }}
+        platform/owner: {{ .Values.owner | default "sheriffo" }}
     spec:
       restartPolicy: Always
       shareProcessNamespace: true

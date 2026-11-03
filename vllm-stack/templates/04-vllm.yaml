@@ -41,6 +41,7 @@ spec:
         app: {{ .Values.vllm.serviceName }}
         component: vllm
         model: {{ .Values.model.servedName }}
+        platform/owner: {{ .Values.owner | default "sheriffo" }}
     spec:
       restartPolicy: Always
       shareProcessNamespace: true
@@ -54,6 +55,11 @@ spec:
           effect: "NoSchedule"
       nodeSelector:
         llm-pool: {{ index .Values.vllm.nodeSelector "llm-pool" }}
+      # PACKING policy (lab rule: fill a node before touching the next, to
+      # avoid fragmentation): soft pod AFFINITY prefers co-locating on a node
+      # that already runs this pool (2 pods/node = node full, next pod goes to
+      # the next node). Soft, so it never pends pods. This replaces the old
+      # balance-oriented spread constraint — do not re-add maxSkew here.
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -63,13 +69,12 @@ spec:
                     operator: NotIn
                     values:
                       - vllm
-        podAntiAffinity:
+        podAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - podAffinityTerm:
                 labelSelector:
-                  matchExpressions:
-                    - key: model
-                      operator: Exists
+                  matchLabels:
+                    app: {{ .Values.vllm.serviceName }}
                 topologyKey: kubernetes.io/hostname
               weight: 100
 
