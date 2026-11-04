@@ -7,8 +7,8 @@
 set -uo pipefail
 NS=sir-llm-platform
 D=$(dirname "$0")
-A3=npu-node-agent-5kzvd   # node3
-A4=npu-node-agent-pvhxf   # node4
+A3=npu-node-agent-b4l82   # node3
+A4=npu-node-agent-hx8w8   # node4
 
 apply-head() {
   kubectl apply -f "$D/01-dsv41-service.yaml"

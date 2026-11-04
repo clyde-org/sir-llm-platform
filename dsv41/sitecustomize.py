@@ -24,6 +24,23 @@
 #    the trailing pair (F.pad + reshape(k//2+1)); mirror that logic for the
 #    linear path. The zero pair scales 32 nonexistent trailing elements, so
 #    it is inert for the NPU kernel (same as the MoE path).
+#
+# 3. vllm/v1/engine/utils.py  (wait_for_engine_startup)
+#    The 2-node DP handshake state machine is not fault tolerant: if a
+#    headless worker restarts (or re-hands-shakes) after its first HELLO was
+#    already processed, the head raises
+#        RuntimeError: Unexpected HELLO message for remote engine 1 in
+#        CoreEngineState.CONNECTED state.
+#    and tears down the whole deployment. Tolerate a duplicate HELLO from an
+#    already-CONNECTED engine: re-send the init message (idempotent
+#    re-registration) without re-counting conn/start pending.
+#
+# 4. vllm/v1/engine/core.py  (startup_handshake)
+#    Symmetrically, the worker side used to hard-fail after a single 5-minute
+#    window without the init response (exit 0 -> k8s restart -> duplicate
+#    HELLO on the head). Re-send HELLO on each timeout up to 1 hour so a
+#    transient loss of the init response or a slow head does not crash-loop
+#    the worker.
 import glob
 import os
 import sys
@@ -85,6 +102,105 @@ def _patch_mxfp8(_path):
         _atomic_write(_path, _s)
         print(f"[dsv41-patch] patched odd-k scale packing in {_path}", file=sys.stderr)
 
+# ------------------------------------------------------------ engine/utils.py
+_HELLO_OLD = (
+    "        if status == \"HELLO\" and engine.state == CoreEngineState.NEW:\n"
+    "            # Send init message with DP config info.\n"
+)
+_HELLO_NEW = (
+    "        if status == \"HELLO\" and engine.state in (\n"
+    "            CoreEngineState.NEW, CoreEngineState.CONNECTED,\n"
+    "        ):  # dsv41-patch: tolerate re-HELLO after worker restart\n"
+    "            _dsv41_rehello = engine.state == CoreEngineState.CONNECTED\n"
+    "            if _dsv41_rehello:\n"
+    "                logger.warning(\n"
+    "                    \"dsv41-patch: duplicate HELLO from %s engine %s; \"\n"
+    "                    \"re-sending init message\",\n"
+    "                    \"local\" if local else \"remote\", eng_index,\n"
+    "                )\n"
+    "            # Send init message with DP config info.\n"
+)
+_HELLO_COUNT_OLD = (
+    "            handshake_socket.send_multipart((eng_identity, init_message), copy=False)\n"
+    "            conn_pending[0 if local else 1] -= 1\n"
+    "            start_pending[0 if local else 1] += 1\n"
+    "            engine.state = CoreEngineState.CONNECTED\n"
+)
+_HELLO_COUNT_NEW = (
+    "            handshake_socket.send_multipart((eng_identity, init_message), copy=False)\n"
+    "            if not _dsv41_rehello:  # dsv41-patch: already counted\n"
+    "                conn_pending[0 if local else 1] -= 1\n"
+    "                start_pending[0 if local else 1] += 1\n"
+    "            engine.state = CoreEngineState.CONNECTED\n"
+)
+
+def _patch_engine_utils(_path):
+    with open(_path) as _f:
+        _s = _f.read()
+    if _HELLO_NEW in _s:
+        return  # already patched
+    changed = False
+    if _HELLO_OLD in _s:
+        _s = _s.replace(_HELLO_OLD, _HELLO_NEW, 1)
+        changed = True
+    if _HELLO_COUNT_OLD in _s:
+        _s = _s.replace(_HELLO_COUNT_OLD, _HELLO_COUNT_NEW, 1)
+        changed = True
+    if changed:
+        _atomic_write(_path, _s)
+        print(f"[dsv41-patch] patched duplicate-HELLO tolerance in {_path}", file=sys.stderr)
+
+# --------------------------------------------------------------- engine/core.py
+_HS_OLD = (
+    "        # Receive initialization message.\n"
+    "        logger.debug(\"Waiting for init message from front-end.\")\n"
+    "        if not handshake_socket.poll(timeout=HANDSHAKE_TIMEOUT_MINS * 60_000):\n"
+    "            raise RuntimeError(\n"
+    "                \"Did not receive response from front-end \"\n"
+    "                f\"process within {HANDSHAKE_TIMEOUT_MINS} \"\n"
+    "                f\"minutes\"\n"
+    "            )\n"
+    "        init_bytes = handshake_socket.recv()\n"
+)
+_HS_NEW = (
+    "        # Receive initialization message.\n"
+    "        logger.debug(\"Waiting for init message from front-end.\")\n"
+    "        # dsv41-patch: re-send HELLO on each timeout instead of dying,\n"
+    "        # so a lost init response or a slow head does not crash-loop a\n"
+    "        # headless worker (head tolerates the duplicate HELLO).\n"
+    "        _dsv41_deadline = time.monotonic() + 3600\n"
+    "        while True:\n"
+    "            if handshake_socket.poll(timeout=HANDSHAKE_TIMEOUT_MINS * 60_000):\n"
+    "                init_bytes = handshake_socket.recv()\n"
+    "                break\n"
+    "            if time.monotonic() > _dsv41_deadline:\n"
+    "                raise RuntimeError(\n"
+    "                    \"Did not receive response from front-end \"\n"
+    "                    f\"process within {HANDSHAKE_TIMEOUT_MINS} \"\n"
+    "                    f\"minutes\"\n"
+    "                )\n"
+    "            logger.warning(\"dsv41-patch: no init response yet; re-sending HELLO\")\n"
+    "            handshake_socket.send(\n"
+    "                msgspec.msgpack.encode(\n"
+    "                    {\n"
+    "                        \"status\": \"HELLO\",\n"
+    "                        \"local\": local_client,\n"
+    "                        \"headless\": headless,\n"
+    "                    }\n"
+    "                )\n"
+    "            )\n"
+)
+
+def _patch_engine_core(_path):
+    with open(_path) as _f:
+        _s = _f.read()
+    if _HS_NEW in _s:
+        return  # already patched
+    if _HS_OLD in _s:
+        _s = _s.replace(_HS_OLD, _HS_NEW, 1)
+        _atomic_write(_path, _s)
+        print(f"[dsv41-patch] patched HELLO retry in {_path}", file=sys.stderr)
+
 def _atomic_write(_path, _s):
     _tmp = _path + ".dsv41patch"
     with open(_tmp, "w") as _f:
@@ -112,5 +228,27 @@ for _pat in (
     for _path in glob.glob(_pat):
         try:
             _patch_mxfp8(_path)
+        except OSError:
+            pass
+
+for _pat in (
+    "/vllm-workspace/vllm/vllm/v1/engine/utils.py",
+    "/usr/local/lib/python*/site-packages/vllm/v1/engine/utils.py",
+    "/opt/conda/lib/python*/site-packages/vllm/v1/engine/utils.py",
+):
+    for _path in glob.glob(_pat):
+        try:
+            _patch_engine_utils(_path)
+        except OSError:
+            pass
+
+for _pat in (
+    "/vllm-workspace/vllm/vllm/v1/engine/core.py",
+    "/usr/local/lib/python*/site-packages/vllm/v1/engine/core.py",
+    "/opt/conda/lib/python*/site-packages/vllm/v1/engine/core.py",
+):
+    for _path in glob.glob(_pat):
+        try:
+            _patch_engine_core(_path)
         except OSError:
             pass

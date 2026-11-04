@@ -583,3 +583,106 @@ applying `dsv4f/03-dsv4f-w8a8-deploy.yaml`.
 - Quay watch: nightly-releases-v0.30.0 line is promising but today's build
   had two vLLM-core regressions (current_platform circular import, triton
   language.dtype); re-check future builds.
+
+## 14. HDK 26.1.1 driver upgrade + definitive FP4 SoC wall (2026-11-04)
+
+### 14.1 Driver/firmware upgrade (node3 + node4, done)
+
+Pursued the §11.1 hypothesis ("driver upgrade is the real fix"): installed
+**Ascend HDK 26.1.1 driver + firmware 9.0.0.9.220** (A2/910B3, aarch64,
+openEuler runfiles, user-supplied) on both nodes.
+
+Procedure notes (for next time):
+- **Order per node**: driver `.run --full` → reboot → firmware `.run --full`
+  → reboot. Firmware install BEFORE the first reboot fails with "None of the
+  chips are up" (new firmware tooling vs old loaded driver).
+- node3 upgrade refused with `ERR_NO:0x0091 username not permission for root`
+  because `/etc/ascend_install.info` (from the 25.5.0 era) had
+  `UserName=root`; the 26.1.1 installer requires `UserName=HwHiAiUser`
+  (user exists, uid 1007). Edited the info file (backup kept at
+  `/etc/ascend_install.info.bak-2550`), then install succeeded. node4's
+  record was already HwHiAiUser.
+- DKMS kernel modules build in-place (kernel-devel present on both nodes).
+- Post-upgrade: driver `Version=26.1.1`, `/usr/local/Ascend/firmware/version.info`
+  = 9.0.0.9.220 (package compat range `[26.0,26.1.]`), 8× 910B3 OK on each
+  node, k8s `huawei.com/Ascend910: 8` re-registered. `dsv4f` (old image,
+  CANN 9.2.0) runs fine on the new driver.
+- Node clocks are skewed (node3 was 8m45s behind UTC, node4 ~36s) — log-time
+  correlation across nodes is unreliable; use k8s timestamps.
+
+### 14.2 FP4 ND→NZ cast: SoC-level wall on 910B3 (definitive)
+
+Re-tested the exact `w4a8_mxfp4.py` op (`torch_npu.npu_format_cast(t, 29,
+customize_dtype=torch.float8_e4m3fn, input_dtype=torch_npu.float4_e2m1fn_x2)`)
+on node3 with the NEW driver, across both images:
+
+| stack | result |
+|---|---|
+| v0.30.0rc2-openeuler (CANN 9.2.0) + HDK 26.1.1 + fw 9.0.0.9.220 | `aclnnNpuFormatCast not support recovery format` (unchanged) |
+| deepseek-v4.1-flash (CANN 9.1.0, official A2 validation image) + same driver | `customize_dtype is not supported by the current soc version` (ERR00007 PTA feature not supported) |
+| controls, same node/driver: `bf16→NZ` | OK |
+| controls: `fp4→ND` (passthrough) | OK |
+
+Conclusion: **910B3 has no FP4 e2m1fn_x2 ND→FRACTAL_NZ kernel in any
+released CANN stack** — the wall is SoC capability, not driver/firmware
+version. The driver-upgrade hypothesis from §11.1 is disproven. This matches
+the official tutorial: both A2 (4× Atlas 800 A2) and A3 configs deploy
+**W8A8 checkpoints** (`--quantization ascend`); the FP4 path in vllm-ascend
+targets A3/950-class silicon.
+
+Side effect of the boot attempt: the rc2 1017 boot got further than ever —
+16-rank HCCL world formed, Engram rows loading on both nodes — and died
+exactly at the FP4 expert cast (both DP ranks, same line).
+
+### 14.3 vLLM DP handshake race — found & fixed (dsv41-patch v2)
+
+During the boots, exposed a real vLLM v0.30.0 bug: `wait_for_engine_startup`
+(vllm/v1/engine/utils.py) raises `Unexpected HELLO message for remote engine
+1 in CoreEngineState.CONNECTED state` when a headless worker re-hands-shakes
+after its first HELLO was processed (worker init failure → exit 0 → k8s
+restart → duplicate HELLO → head tears itself down; head container then
+zombies in NPU teardown). Worker side (`core.py startup_handshake`) dies
+after a single 5-min window without the init response.
+
+Both sides patched in `dsv41/sitecustomize.py` (idempotent source patches,
+verified compile-clean in-image):
+- utils.py: tolerate duplicate HELLO in CONNECTED state → re-send the init
+  message (idempotent re-registration), do not re-count pending.
+- core.py: on init-response timeout, re-send HELLO (5-min cadence) up to
+  1h instead of raising.
+
+### 14.4 W8A8 option for V4.1-Flash: exists, with caveats
+
+`Eco-Tech/DeepSeek-V4.1-Flash-w8a8` (ModelScope) is published — 301 files,
+~800 GB (272×~2.14 GB W8A8 shards + 2×~98 GB BF16 Engram + scales +
+`optional/quarot.safetensors`). Caveats from its own README:
+- **先行体验版** (early access), NOT the official msmodelslim branch build.
+- Full vLLM/vllm-ascend inference + task accuracy **not yet signed off**.
+- Based on **deepseek-ai/DeepSeek-V4.1-Flash (original), not the 1017
+  revision**.
+- Aurora profile: norm folding + QuaRot rotations (global/query rotation
+  matrices in `optional/quarot.safetensors`; `engram_rotation_config` in
+  config.json); Engram stored BF16 (runtime INT8 conversion optional).
+- `quant_method: ascend`, `W8A8_DYNAMIC` — matches the validated A2 flag.
+
+Running it needs the official A2 validation image
+(`quay.io/ascend/vllm-ascend:deepseek-v4.1-flash`, CANN 9.1.0 — pulled onto
+node3+node4) and a vllm-ascend build that implements the Aurora rotation
+contract. 2-node A2 adaptation = our DP2/TP8/EP16 recipe with
+`--quantization ascend` + Engram cpu_offload (196 GB Engram → host RAM).
+
+### 14.5 State after this session
+- node3/node4: HDK 26.1.1 + fw 9.0.0.9.220, 16 NPUs OK.
+- `dsv4f` (DeepSeek-V4-Flash W8A8, the `dsv4`/`deepseek-v4-flash` service)
+  restored to 1 replica on node3, running on the new driver.
+- `dsv41-head`/`dsv41-worker` at 0. Manifests now point at the
+  `deepseek-v4.1-flash` image; `dsv41-patch` ConfigMap = sitecustomize v2
+  (4 patches). boot.sh agent names updated (node3 npu-node-agent-b4l82,
+  node4 npu-node-agent-hx8w8).
+- 1017 FP4 weights still on node3+node4 (`/home/data/models/
+  DeepSeek-V4.1-Flash-1017`) — unusable on 910B3 until Ascend ships the
+  kernel; kept for A3-class hardware or a future CANN.
+- **Decision pending (user)**: (A) download the ~800 GB W8A8 V4.1-Flash
+  checkpoint and boot the 2-node A2 W8A8 path (accepting the early-access /
+  not-1017 caveats), (B) wait for A3/950 hardware or a CANN with FP4 on
+  910B3, (C) other.

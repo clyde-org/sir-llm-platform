@@ -31,7 +31,12 @@ spec:
         kubernetes.io/hostname: node3
       containers:
         - name: vllm
-          image: quay.io/ascend/vllm-ascend:v0.30.0rc2-openeuler
+          # Official A2 validation image for DeepSeek-V4.1-Flash (tutorial
+          # section 4.1, "A2 series" tab). Bundles the CANN build whose op
+          # library supports the FP4 routed-expert ND->NZ format cast that
+          # the v0.30.0rc2-openeuler image (CANN 9.2.0) rejects with
+          # "aclnnNpuFormatCast not support recovery format".
+          image: quay.io/ascend/vllm-ascend:deepseek-v4.1-flash
           imagePullPolicy: Never
           args:
             - vllm

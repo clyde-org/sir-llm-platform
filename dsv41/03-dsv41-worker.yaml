@@ -31,7 +31,7 @@ spec:
         kubernetes.io/hostname: node4
       containers:
         - name: vllm
-          image: quay.io/ascend/vllm-ascend:v0.30.0rc2-openeuler
+          image: quay.io/ascend/vllm-ascend:deepseek-v4.1-flash
           imagePullPolicy: Never
           args:
             - vllm
